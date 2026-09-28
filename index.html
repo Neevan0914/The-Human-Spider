@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Human Spider</title>
+<meta name="description" content="Swing through a 3D midtown Manhattan past the Empire State, Chrysler and Flatiron buildings.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;800;900&family=Barlow+Semi+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" hidden>
+  <div class="sign" id="sign"><span id="signText">W 34 St &amp; 5 Av</span></div>
+  <div class="landmark" id="landmark"></div>
+  <div class="readout">
+    <div><span class="num" id="spd">0</span><span class="unit">km/h</span></div>
+    <div><span class="num small" id="alt">0</span><span class="unit">m up</span></div>
+    <div class="state" id="state">On foot</div>
+  </div>
+  <div class="tod" id="tod">Morning</div>
+  <div class="hint" id="hint">H: controls</div>
+  <div class="crosshair" id="cross"></div>
+  <div class="anchor" id="anchor"></div>
+  <div class="noweb" id="noweb">Nothing to attach to</div>
+</div>
+
+<div id="help" hidden>
+  <h3>Controls</h3>
+  <dl>
+    <dt>Mouse</dt><dd>Look</dd>
+    <dt>W A S D</dt><dd>Run, steer, pump the swing, crawl on walls</dd>
+    <dt>Left mouse / Shift</dt><dd>Hold to swing, release to let go</dd>
+    <dt>Space</dt><dd>Jump (hold on the ground to charge). Mid-swing: jump off the web</dd>
+    <dt>Right mouse / E</dt><dd>Web-zip to the point under the crosshair; ledges launch you over</dd>
+    <dt>C / Ctrl</dt><dd>Dive</dd>
+    <dt>T</dt><dd>Time of day</dd>
+    <dt>R</dt><dd>Back to the Empire State deck</dd>
+    <dt>G</dt><dd>Graphics quality</dd>
+    <dt>M</dt><dd>Sound on/off</dd>
+    <dt>H</dt><dd>Hide this panel</dd>
+  </dl>
+</div>
+
+<div id="start">
+  <div class="panel">
+    <p class="eyebrow">Midtown Manhattan · no enemies, just gravity</p>
+    <h1>The Human<br><span>Spider</span></h1>
+    <p class="lede">Start on the 86th floor deck of the Empire State Building. Swing to the Chrysler crown on Lexington, then down Broadway to the Flatiron at 23rd Street.</p>
+    <div class="times" id="times" role="radiogroup" aria-label="Time of day"></div>
+    <button id="go" type="button" disabled>Generating the city…</button>
+    <div class="bar"><i id="bar"></i></div>
+    <ul class="keys">
+      <li><b>Hold left mouse</b> swing</li>
+      <li><b>Space</b> jump off the web</li>
+      <li><b>Right mouse</b> web-zip</li>
+      <li><b>W A S D</b> pump · run · climb</li>
+    </ul>
+    <p class="touchnote">On a phone: left thumb moves, drag right side to look, buttons swing/jump/zip.</p>
+  </div>
+</div>
+
+<div id="pause" hidden><div class="panel small"><h2>Paused</h2><p>Click to keep swinging.</p></div></div>
+
+<div id="touch" hidden>
+  <div id="stick"><div id="knob"></div></div>
+  <div class="tbtns">
+    <button data-act="zip" type="button">Zip</button>
+    <button data-act="dive" type="button">Dive</button>
+    <button data-act="jump" type="button">Jump</button>
+    <button data-act="swing" type="button" class="big">Swing</button>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
