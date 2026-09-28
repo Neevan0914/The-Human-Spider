@@ -66,7 +66,22 @@ html, body { height: 100%; margin: 0; background: var(--ink); color: var(--paper
   position: fixed; inset: 0; display: flex; align-items: center; padding-inline: 16px;
   background: linear-gradient(90deg, rgba(11,11,14,.92) 0%, rgba(11,11,14,.72) 38%, rgba(11,11,14,0) 70%);
 }
-#pause { justify-content: center; background: rgba(11,11,14,.55); cursor: pointer; }
+#pause { justify-content: center; background: rgba(11,11,14,.6); backdrop-filter: blur(3px); }
+.pbtns { display: grid; gap: 10px; margin-top: 6px; }
+.pbtns button {
+  font: 800 22px var(--display); letter-spacing: .06em; text-transform: uppercase; color: #fff;
+  background: var(--red); border: 2px solid var(--red); padding: 10px 34px 8px; cursor: pointer; min-width: 230px;
+}
+.pbtns button:hover { background: var(--red-hi); border-color: var(--red-hi); }
+.pbtns button.ghost { background: transparent; border-color: rgba(242,239,232,.45); color: var(--paper); }
+.pbtns button.ghost:hover { background: rgba(242,239,232,.1); border-color: var(--paper); }
+.pbtns button:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+.phint { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; }
+#pauseBtn {
+  display: none; position: absolute; right: 16px; top: calc(40px + env(safe-area-inset-top, 0px)); pointer-events: auto;
+  width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); background: rgba(11,11,14,.45);
+  color: var(--paper); font: 800 14px var(--display); letter-spacing: -.05em;
+}
 .panel { width: min(470px, 100%); margin-left: clamp(0px, 5vw, 80px); display: grid; gap: 16px; }
 .panel.small { margin: 0; width: auto; text-align: center; }
 .panel.small h2 { margin: 0; font-family: var(--display); font-size: 44px; font-weight: 900; text-transform: uppercase; }
@@ -110,6 +125,7 @@ h1 span { color: var(--red); }
   .touchnote { display: block; }
   .keys { display: none; }
   .hint { display: none; }
+  #pauseBtn { display: block; }
 }
 @media (max-width: 640px) {
   #start { align-items: flex-end; padding-block: 24px; background: linear-gradient(0deg, rgba(11,11,14,.94) 0%, rgba(11,11,14,.75) 55%, rgba(11,11,14,.1) 100%); }

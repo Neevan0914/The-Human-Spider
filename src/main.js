@@ -147,12 +147,48 @@ function start() {
   canvas.focus();
 }
 
+// ------------------------------------------------------------ pause menu
+const isPaused = () => !$('pause').hidden;
+
+function pause() {
+  if (mode !== 'play' || isPaused()) return;
+  $('pause').hidden = false;
+  $('touch').hidden = true;
+  audio.wind(0, 300);
+  $('resume').focus();
+}
+
+function resume() {
+  $('pause').hidden = true;
+  if (isTouch) $('touch').hidden = false;
+  else input.requestLock();
+  audio.start();
+  clock.getDelta();
+}
+
+function toMainMenu() {
+  mode = 'menu';
+  $('pause').hidden = true;
+  $('hud').hidden = true;
+  $('touch').hidden = true;
+  $('help').hidden = true;
+  showHelp = false;
+  $('start').hidden = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+  web.release();
+  resetPlayer();
+  audio.wind(0, 300);
+  $('go').focus();
+}
+
 document.addEventListener('pointerlockchange', () => {
   if (mode !== 'play' || isTouch) return;
-  $('pause').hidden = !!document.pointerLockElement;
+  if (!document.pointerLockElement) pause();
 });
-$('pause').addEventListener('click', () => { input.requestLock(); $('pause').hidden = true; audio.start(); });
-canvas.addEventListener('click', () => { if (mode === 'play' && !isTouch && !document.pointerLockElement) input.requestLock(); });
+$('resume').addEventListener('click', resume);
+$('menu').addEventListener('click', toMainMenu);
+$('pauseBtn').addEventListener('click', pause);
+canvas.addEventListener('click', () => { if (mode === 'play' && !isTouch && !isPaused() && !document.pointerLockElement) input.requestLock(); });
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -238,8 +274,12 @@ function loop() {
     if (input.tapped('KeyH')) { showHelp = !showHelp; hud.help.hidden = !showHelp; }
     if (input.tapped('KeyM')) audio.setMuted(!audio.muted);
     if (input.tapped('KeyG')) setQuality(quality === 'high' ? 'low' : 'high');
-    const paused = !isTouch && !document.pointerLockElement && !$('pause').hidden;
-    if (!paused) {
+    if (input.tapped('KeyP')) {
+      if (isPaused()) resume();
+      else if (document.pointerLockElement) document.exitPointerLock(); // triggers pause()
+      else pause();
+    }
+    if (!isPaused()) {
       player.update(dt, input, cam);
       cam.update(dt, player, input.look);
       audio.wind(player.speed, player.p.y);

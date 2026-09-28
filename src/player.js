@@ -88,7 +88,7 @@ export class Player {
     if (this.flipT > 0) this.flipT = Math.max(0, this.flipT - dt);
 
     // Swing
-    if (input.swingPressed()) this.tryStartSwing(fwdH);
+    if (input.swingPressed()) this.tryStartSwing(fwdH, cam);
     if (this.state === 'swing' && !input.swingHeld()) this.releaseSwing(false);
 
     // Jump (charged on the ground: hold to crouch, release to leap)
@@ -132,7 +132,7 @@ export class Player {
     this.previewT -= dt;
     if (this.previewT <= 0) {
       this.previewT = 0.1;
-      this.preview = this.state === 'swing' ? null : this.findAnchor(fwdH);
+      this.preview = this.state === 'swing' ? null : this.findAnchor(fwdH, cam);
       this.zipPreview = this.findZip(cam);
     }
     const sp = this.speed;
@@ -141,7 +141,11 @@ export class Player {
   }
 
   // ---------------------------------------------------------------- swinging
-  findAnchor(fwdH) {
+  // Anchor search, in three passes so a web can reach any building:
+  //  1. an automatic fan above and ahead (the smoothest swings),
+  //  2. wherever the crosshair points,
+  //  3. any building surface in any direction, even below you.
+  findAnchor(fwdH, cam) {
     const hv = _b.set(this.v.x, 0, this.v.z);
     const dir = new THREE.Vector3();
     if (hv.length() > 6) dir.copy(hv.normalize()).multiplyScalar(0.6).addScaledVector(fwdH, 0.4);
@@ -152,34 +156,49 @@ export class Player {
     const right = new THREE.Vector3(-dir.z, 0, dir.x);
     const o = new THREE.Vector3(this.p.x, this.p.y + 1, this.p.z);
     const D = new THREE.Vector3();
-    let best = null, bestScore = -Infinity;
-    const pitches = [58, 48, 68, 40, 78];
-    const yaws = [0, 22, -22, 40, -40, 60, -60];
-    for (const pd of pitches) for (const yd of yaws) {
-      const pr = pd * Math.PI / 180, yr = yd * Math.PI / 180;
-      D.copy(dir).multiplyScalar(Math.cos(yr)).addScaledVector(right, Math.sin(yr));
-      D.multiplyScalar(Math.cos(pr)); D.y = Math.sin(pr);
-      const hit = this.col.raycast(o, D, 125);
-      if (!hit) continue;
-      const height = hit.point.y - this.p.y;
-      if (height < 7 || hit.t < 12) continue;
-      const dx = hit.point.x - this.p.x, dz = hit.point.z - this.p.z;
-      const ahead = dx * dir.x + dz * dir.z;
-      // Sideways anchors curve the swing into walls; prefer ones in line with travel.
-      const lateral = Math.abs(dx * right.x + dz * right.z);
-      const score = -Math.abs(hit.t - 52) * 0.5 + ahead * 0.35 + Math.min(height, 60) * 0.25
-        - Math.max(0, lateral - 0.35 * height) * 0.45;
-      if (score > bestScore) {
-        bestScore = score;
-        best = { point: new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z), normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z) };
+    const toAnchor = hit => ({
+      point: new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z),
+      normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z),
+    });
+    const fan = (pitches, yaws, range, minHeight, minDist, scoreFn) => {
+      let best = null, bestScore = -Infinity;
+      for (const pd of pitches) for (const yd of yaws) {
+        const pr = pd * Math.PI / 180, yr = yd * Math.PI / 180;
+        D.copy(dir).multiplyScalar(Math.cos(yr)).addScaledVector(right, Math.sin(yr));
+        D.multiplyScalar(Math.cos(pr)); D.y = Math.sin(pr);
+        const hit = this.col.raycast(o, D, range);
+        if (!hit) continue;
+        const height = hit.point.y - this.p.y;
+        if (height < minHeight || hit.t < minDist) continue;
+        const dx = hit.point.x - this.p.x, dz = hit.point.z - this.p.z;
+        const score = scoreFn(hit, height, dx * dir.x + dz * dir.z, Math.abs(dx * right.x + dz * right.z));
+        if (score > bestScore) { bestScore = score; best = hit; }
       }
+      return best;
+    };
+
+    // 1. Automatic: above and ahead, in line with travel.
+    let hit = fan([58, 48, 68, 40, 78, 30, 86], [0, 22, -22, 40, -40, 60, -60], 200, 3, 8,
+      (h, height, ahead, lateral) => -Math.abs(h.t - 52) * 0.5 + ahead * 0.35 + Math.min(height, 60) * 0.25
+        - Math.max(0, lateral - 0.35 * height) * 0.45);
+    if (hit) return toAnchor(hit);
+
+    // 2. Crosshair.
+    if (cam) {
+      const c = this.col.raycast(cam.camera.position, cam.forward, 260);
+      if (c && c.t > cam.camera.position.distanceTo(this.p) + 1) return toAnchor(c);
     }
-    return best;
+
+    // 3. Anything: all around, upward first, then level and downward.
+    const all = [0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180];
+    hit = fan([60, 35, 15, 80], all, 400, 0.5, 4, (h, height, ahead) => -h.t * 0.3 + ahead * 0.2 + height * 0.1);
+    if (!hit) hit = fan([0, -20, -45, -70, -85], all, 520, -1e9, 4, (h, height, ahead) => -h.t * 0.3 + ahead * 0.2);
+    return hit ? toAnchor(hit) : null;
   }
 
-  tryStartSwing(fwdH) {
+  tryStartSwing(fwdH, cam) {
     if (this.state === 'swing' || this.state === 'zip') return;
-    const hit = this.findAnchor(fwdH);
+    const hit = this.findAnchor(fwdH, cam);
     if (!hit) { this.noAnchor = 0.5; return; }
     if (this.state === 'ground') { this.v.y = Math.max(this.v.y, 10); this.p.y += 0.1; }
     if (this.state === 'wall') { this.v.addScaledVector(this.wallN, 7).y += 3; this.wallCooldown = 0.4; }
@@ -320,7 +339,8 @@ export class Player {
         this.collide(h);
         if (this.state !== 'swing') break;
         // Swinging above the anchor puts the web in compression: let go.
-        if (p.y > this.anchor.y + 1.5) this.releaseSwing(false);
+        // (Webs attached below you only let go once they have caught you.)
+        if (p.y > this.anchor.y + 1.5 && this.webT > 0.5 && v.y > 0) this.releaseSwing(false);
         break;
       }
       case 'zip': {

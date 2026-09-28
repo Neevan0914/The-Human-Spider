@@ -28,6 +28,7 @@ Then open the printed URL (for example http://localhost:8000). Three.js loads fr
 | R | Return to the Empire State deck |
 | G | Toggle graphics quality |
 | M | Mute |
+| P or Esc | Pause menu: resume, or go back to the main menu |
 | H | Show or hide the controls panel |
 
 Touch devices get a thumbstick plus Swing, Jump, Zip and Dive buttons.
@@ -36,7 +37,7 @@ Touch devices get a thumbstick plus Swing, Jump, Zip and Dive buttons.
 
 - **Fixed 120 Hz integration** of a point mass, with gravity and quadratic air drag (`F = −k·|v|·v`). Terminal velocity is about 55 m/s in a normal fall and about 85 m/s in a dive.
 - **The web is an inextensible rope.** After each step, if the body is farther from the anchor than the rope length, its position is projected back onto that sphere and the outward radial velocity is removed. That is the exact pendulum constraint, so the swing period, energy exchange and centripetal tension all come from the math rather than from canned animation. The rope goes slack if you rise above the anchor, and it snaps if a building gets between you and the anchor point.
-- **Anchor selection** raycasts a fan of directions above and ahead of your motion and scores the building surfaces it hits by distance, height and how far ahead they are. With nothing tall enough nearby there is nothing to swing from, so crossing open ground or a rooftop above the skyline means falling.
+- **Anchor selection** tries three things in order. First it casts a fan of rays above and ahead of your motion and scores the building surfaces it hits by distance, height and how well they line up with your travel, which gives the smoothest swings. If that finds nothing, it uses whatever building is under the crosshair. Failing that, it takes any building in any direction within a few hundred meters, even one below you. That web catches you as you fall past it, so you can attach to any building from anywhere.
 - **Pumping.** Holding a direction while the web is taut adds a small tangential force, like driving a playground swing with your legs.
 - **Collision.** The body is two spheres tested against convex prisms, one per building tier, spire section and rooftop box, in a spatial hash. Curbs and low ledges are stepped over. Hitting a wall while airborne starts a wall crawl, and climbing over the top edge vaults you onto the roof.
 

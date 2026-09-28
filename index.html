@@ -30,6 +30,7 @@
     <div class="state" id="state">On foot</div>
   </div>
   <div class="tod" id="tod">Morning</div>
+  <button id="pauseBtn" type="button" aria-label="Pause">II</button>
   <div class="hint" id="hint">H: controls</div>
   <div class="crosshair" id="cross"></div>
   <div class="anchor" id="anchor"></div>
@@ -49,6 +50,7 @@
     <dt>R</dt><dd>Back to the Empire State deck</dd>
     <dt>G</dt><dd>Graphics quality</dd>
     <dt>M</dt><dd>Sound on/off</dd>
+    <dt>P / Esc</dt><dd>Pause menu (resume or go to the main menu)</dd>
     <dt>H</dt><dd>Hide this panel</dd>
   </dl>
 </div>
@@ -71,7 +73,16 @@
   </div>
 </div>
 
-<div id="pause" hidden><div class="panel small"><h2>Paused</h2><p>Click to keep swinging.</p></div></div>
+<div id="pause" hidden>
+  <div class="panel small" role="dialog" aria-labelledby="pauseTitle">
+    <h2 id="pauseTitle">Paused</h2>
+    <div class="pbtns">
+      <button id="resume" type="button">Resume</button>
+      <button id="menu" type="button" class="ghost">Main menu</button>
+    </div>
+    <p class="phint">P to pause and resume</p>
+  </div>
+</div>
 
 <div id="touch" hidden>
   <div id="stick"><div id="knob"></div></div>
