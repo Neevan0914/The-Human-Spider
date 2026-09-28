@@ -28,6 +28,8 @@
     <div><span class="num" id="spd">0</span><span class="unit">km/h</span></div>
     <div><span class="num small" id="alt">0</span><span class="unit">m up</span></div>
     <div class="state" id="state">On foot</div>
+    <div class="hpbar" aria-label="Health"><i id="hpfill"></i></div>
+    <div class="kos"><span id="kos">0</span> thugs webbed up</div>
   </div>
   <div class="tod" id="tod">Morning</div>
   <button id="pauseBtn" type="button" aria-label="Pause">II</button>
@@ -35,6 +37,9 @@
   <div class="crosshair" id="cross"></div>
   <div class="anchor" id="anchor"></div>
   <div class="noweb" id="noweb">Nothing to attach to</div>
+  <div class="toast" id="toast"></div>
+  <div class="tmark" id="tmark" hidden><i></i><span id="tmarkd"></span></div>
+  <div class="tarrow" id="tarrow" hidden><i></i><span id="tarrowd"></span></div>
 </div>
 
 <div id="help" hidden>
@@ -45,6 +50,8 @@
     <dt>Left mouse / Shift</dt><dd>Hold to swing, release to let go</dd>
     <dt>Space</dt><dd>Jump (hold on the ground to charge). Mid-swing: jump off the web</dd>
     <dt>Right mouse / E</dt><dd>Web-zip to the point under the crosshair; ledges launch you over</dd>
+    <dt>F</dt><dd>Punch, punch, kick combo (lunges at a nearby thug)</dd>
+    <dt>Q / Middle mouse</dt><dd>Web-shot the thug under the crosshair; right mouse does it too when aimed at one</dd>
     <dt>C / Ctrl</dt><dd>Dive</dd>
     <dt>T</dt><dd>Time of day</dd>
     <dt>R</dt><dd>Back to the Empire State deck</dd>
@@ -57,10 +64,11 @@
 
 <div id="start">
   <div class="panel">
-    <p class="eyebrow">Midtown Manhattan · no enemies, just gravity</p>
+    <p class="eyebrow">Midtown Manhattan · thugs near the landmarks</p>
     <h1>The Human<br><span>Spider</span></h1>
-    <p class="lede">Start on the 86th floor deck of the Empire State Building. Swing to the Chrysler crown on Lexington, then down Broadway to the Flatiron at 23rd Street.</p>
+    <p class="lede">Start on the 86th floor deck of the Empire State Building. Swing to the Chrysler crown on Lexington, then down Broadway to the Flatiron. Thugs turn up near the landmarks; follow the red tracker.</p>
     <div class="times" id="times" role="radiogroup" aria-label="Time of day"></div>
+    <div class="skins" id="skins" role="radiogroup" aria-label="Suit"></div>
     <button id="go" type="button" disabled>Generating the city…</button>
     <div class="bar"><i id="bar"></i></div>
     <ul class="keys">
@@ -68,8 +76,10 @@
       <li><b>Space</b> jump off the web</li>
       <li><b>Right mouse</b> web-zip</li>
       <li><b>W A S D</b> pump · run · climb</li>
+      <li><b>F</b> punch and kick</li>
+      <li><b>Q</b> web up a thug</li>
     </ul>
-    <p class="touchnote">On a phone: left thumb moves, drag right side to look, buttons swing/jump/zip.</p>
+    <p class="touchnote">On a phone: left thumb moves, drag right side to look. Zip webs a thug when you aim at one; Hit punches.</p>
   </div>
 </div>
 
@@ -80,6 +90,7 @@
       <button id="resume" type="button">Resume</button>
       <button id="menu" type="button" class="ghost">Main menu</button>
     </div>
+    <div class="skins" id="pauseSkins" role="radiogroup" aria-label="Suit"></div>
     <p class="phint">P to pause and resume</p>
   </div>
 </div>
@@ -88,7 +99,7 @@
   <div id="stick"><div id="knob"></div></div>
   <div class="tbtns">
     <button data-act="zip" type="button">Zip</button>
-    <button data-act="dive" type="button">Dive</button>
+    <button data-act="hit" type="button">Hit</button>
     <button data-act="jump" type="button">Jump</button>
     <button data-act="swing" type="button" class="big">Swing</button>
   </div>

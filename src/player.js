@@ -57,6 +57,34 @@ export class Player {
     this.contacts = [];
     this.stats = { maxSpeed: 0, swings: 0 };
     this.diving = false;
+    // combat
+    this.hp = 100;
+    this.hurtT = 0;
+    this.sinceHurt = 99;
+    this.attack = null;        // { kind: 'punchR' | 'punchL' | 'kick', t, dur }
+    this.lungeT = 0;
+    this.lungeV = new THREE.Vector3();
+  }
+
+  // Knockback and damage from a thug's punch.
+  hurt(amount, dir) {
+    if (this.hurtT > 0) return;
+    this.hp = Math.max(0, this.hp - amount);
+    this.hurtT = 0.45;
+    this.sinceHurt = 0;
+    this.shake = Math.max(this.shake, 0.35);
+    if (this.state === 'swing' || this.state === 'zip') this.web.release();
+    if (this.state === 'wall' || this.state === 'swing' || this.state === 'zip') this.state = 'air';
+    this.v.x += dir.x * 7; this.v.z += dir.z * 7;
+    if (this.state === 'ground') { this.v.y = 4; this.state = 'air'; this.p.y += 0.05; }
+    this.audio.land(0.6);
+  }
+
+  startAttack(kind, dur, faceDir) {
+    this.attack = { kind, t: 0, dur };
+    if (faceDir) {
+      this.facing.set(faceDir.x, 0, faceDir.z).normalize();
+    }
   }
 
   spawn(pos, face) {
@@ -64,6 +92,7 @@ export class Player {
     this.v.set(0, 0, 0);
     this.state = 'ground';
     this.web.release();
+    this.hp = 100; this.hurtT = 0; this.attack = null; this.lungeT = 0;
     if (face) this.facing.copy(face).setY(0).normalize();
     _m.lookAt(new THREE.Vector3(), this.facing.clone().negate(), UP);
     this.bodyQ.setFromRotationMatrix(_m);
@@ -82,6 +111,11 @@ export class Player {
     this.wish = wish.clone();
     this.moveIn = mv;
 
+    this.hurtT = Math.max(0, this.hurtT - dt);
+    this.sinceHurt += dt;
+    if (this.sinceHurt > 4 && this.hp < 100) this.hp = Math.min(100, this.hp + 10 * dt);
+    if (this.attack) { this.attack.t += dt; if (this.attack.t >= this.attack.dur) this.attack = null; }
+    this.lungeT = Math.max(0, this.lungeT - dt);
     this.wallCooldown = Math.max(0, this.wallCooldown - dt);
     this.gestureT = Math.max(0, this.gestureT - dt);
     this.landT = Math.max(0, this.landT - dt);
@@ -288,9 +322,12 @@ export class Player {
     switch (this.state) {
       case 'ground': {
         const a = 1 - Math.exp(-(wish.lengthSq() > 0.01 ? 9 : 12) * h);
-        const run = this.charging ? RUN * 0.2 : RUN;
-        v.x += (wish.x * run - v.x) * a;
-        v.z += (wish.z * run - v.z) * a;
+        const run = this.charging || this.attack ? RUN * 0.2 : RUN;
+        if (this.lungeT > 0) { v.x = this.lungeV.x; v.z = this.lungeV.z; }
+        else {
+          v.x += (wish.x * run - v.x) * a;
+          v.z += (wish.z * run - v.z) * a;
+        }
         v.y = Math.min(v.y, 0) - G * h;
         p.addScaledVector(v, h);
         this.collide(h);
@@ -302,6 +339,7 @@ export class Player {
         const s = v.length();
         v.addScaledVector(v, -k * s * h);
         if (this.diving) v.y -= 12 * h;
+        if (this.lungeT > 0) { v.x = this.lungeV.x; v.z = this.lungeV.z; v.y = Math.max(v.y, -2); }
         // limited air control
         const along = v.x * wish.x + v.z * wish.z;
         if (along < 16) v.addScaledVector(wish, 7 * h);
@@ -481,7 +519,7 @@ export class Player {
   animate(dt) {
     const hero = this.hero, v = this.v;
     const hs = Math.hypot(v.x, v.z);
-    if (hs > 1) this.facing.set(v.x / hs, 0, v.z / hs);
+    if (hs > 1 && !this.attack) this.facing.set(v.x / hs, 0, v.z / hs);
     const a = { state: 'idle', speed: hs, phase: 0, webSide: this.webSide, gesture: this.gestureT > 0 ? 1 : 0, anchor: this.anchor };
 
     const fwd = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -544,6 +582,15 @@ export class Player {
         up.set(0, 1, 0);
         break;
       }
+    }
+
+    // Combat overrides: strikes and flinches play on the ground or in the air.
+    if ((this.state === 'ground' || this.state === 'air') && (this.attack || this.hurtT > 0)) {
+      if (this.attack) { a.state = this.attack.kind; a.t = this.attack.t / this.attack.dur; }
+      else a.state = 'hurt';
+      flipAngle = 0;
+      fwd.copy(this.facing);
+      up.set(0, 1, 0);
     }
 
     // orthonormal body basis: x = left, y = up, z = forward

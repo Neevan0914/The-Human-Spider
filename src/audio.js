@@ -87,6 +87,25 @@ export class Audio {
 
   jump(s = 1) { this._burst(500, 1, 0.25, 0.18 * s, 'lowpass', 0.3); }
 
+  hit(s = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(180 * s, t);
+    o.frequency.exponentialRampToValueAtTime(55, t + 0.12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.5, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g).connect(this.master);
+    o.start(t); o.stop(t + 0.2);
+    this._burst(1200, 0.8, 0.07, 0.5 * s, 'bandpass', 0.4);
+  }
+
+  swish() { this._burst(1800, 1.2, 0.14, 0.18, 'bandpass', 0.45); }
+
+  rip() { this._burst(2600, 2, 0.35, 0.3, 'bandpass', 0.3); }
+
   land(s = 1) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;

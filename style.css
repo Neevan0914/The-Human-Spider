@@ -137,3 +137,33 @@ h1 span { color: var(--red); }
 @media (prefers-reduced-motion: reduce) {
   .landmark, .anchor, .noweb, .crosshair { transition: none; }
 }
+
+/* ---------- Combat HUD ---------- */
+.hpbar { width: 180px; height: 6px; background: rgba(255,255,255,.18); margin-top: 8px; }
+.hpbar i { display: block; height: 100%; width: 100%; background: var(--paper); transition: width .15s; }
+.hpbar.low i { background: var(--red-hi); }
+.kos { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin-top: 6px; }
+.kos span { color: var(--paper); }
+.crosshair.lock { background: transparent; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid var(--red-hi); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.toast {
+  position: absolute; top: calc(66px + env(safe-area-inset-top, 0px)); left: 50%; transform: translate(-50%, -6px);
+  background: rgba(11,11,14,.8); border-left: 3px solid var(--red); padding: 7px 14px; font-family: var(--body); font-weight: 600;
+  font-size: 16px; letter-spacing: .02em; opacity: 0; transition: opacity .3s, transform .3s; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.tmark, .tarrow { position: absolute; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 2px; }
+.tmark i { width: 14px; height: 14px; background: var(--red-hi); transform: rotate(45deg); box-shadow: 0 0 0 2px rgba(0,0,0,.45), 0 0 12px rgba(255,47,55,.7); }
+.tmark.webbed i { background: var(--paper); box-shadow: 0 0 0 2px rgba(0,0,0,.45); }
+.tmark span, .tarrow span { font-family: var(--mono); font-size: 11px; color: var(--paper); text-shadow: 0 1px 4px rgba(0,0,0,.9); }
+.tarrow i { width: 0; height: 0; border-left: 22px solid var(--red-hi); border-top: 11px solid transparent; border-bottom: 11px solid transparent; transform: rotate(var(--rot, 0rad)); filter: drop-shadow(0 0 6px rgba(255,47,55,.7)) drop-shadow(0 1px 2px rgba(0,0,0,.8)); }
+
+/* ---------- Suit picker ---------- */
+.skins { display: flex; gap: 10px; flex-wrap: wrap; }
+.panel.small .skins { justify-content: center; margin-top: 4px; }
+.skins button {
+  width: 40px; height: 40px; border-radius: 50%; cursor: pointer; padding: 0;
+  border: 2px solid rgba(242,239,232,.3);
+  background: linear-gradient(135deg, var(--a) 0 50%, var(--b) 50% 100%);
+}
+.skins button[aria-checked="true"] { border-color: var(--paper); box-shadow: 0 0 0 2px var(--red); }
+.skins button:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }

@@ -20,6 +20,7 @@ export class Input {
     dom.addEventListener('mousedown', e => {
       if (e.button === 0) { this.mouseL = true; this.edges.add('Mouse0'); }
       if (e.button === 2) { this.mouseR = true; this.edges.add('Mouse2'); }
+      if (e.button === 1) { e.preventDefault(); this.edges.add('Mouse1'); }
     });
     addEventListener('mouseup', e => {
       if (e.button === 0) this.mouseL = false;
@@ -105,6 +106,10 @@ export class Input {
   jumpHeld() { return this.down('Space') || this.touch.jump; }
   jumpPressed() { return this.tapped('Space') || this.tapped('T_jump'); }
   zipPressed() { return this.tapped('Mouse2') || this.tapped('KeyE') || this.tapped('T_zip'); }
+  meleePressed() { return this.tapped('KeyF') || this.tapped('T_hit'); }
+  webShotPressed() { return this.tapped('KeyQ') || this.tapped('Mouse1'); }
+  // Removes a press so later handlers in the same frame don't see it.
+  consume(...codes) { for (const c of codes) this.edges.delete(c); }
   diveHeld() { return this.down('KeyC') || this.down('ControlLeft') || this.touch.dive; }
 
   endFrame() {

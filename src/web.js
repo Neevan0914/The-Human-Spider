@@ -76,7 +76,7 @@ export class WebLine {
     if (this.active && this.shoot < 1) {
       this.shoot = Math.min(1, this.shoot + dt / 0.12);
       reach = this.shoot;
-      if (this.shoot >= 1) { this.splat.visible = true; this.splat.scale.setScalar(1); }
+      if (this.shoot >= 1 && this.showSplat !== false) { this.splat.visible = true; this.splat.scale.setScalar(1); }
     }
     let fade = 1;
     if (!this.active) {

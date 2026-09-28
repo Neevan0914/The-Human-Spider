@@ -1,6 +1,6 @@
 # The Human Spider
 
-A 3D web-slinging game set in a procedurally built midtown Manhattan. There are no enemies. You have webs, gravity and a lot of skyscrapers.
+A 3D web-slinging game set in a procedurally built midtown Manhattan. You have webs, gravity, a lot of skyscrapers, and pairs of street thugs who show up on rooftops near the landmarks.
 
 You start on the 86th-floor observation deck of the **Empire State Building**. The **Chrysler Building** is northeast on Lexington Avenue, and the **Flatiron Building** is down Broadway at 23rd Street, facing Madison Square Park.
 
@@ -23,6 +23,8 @@ Then open the printed URL (for example http://localhost:8000). Three.js loads fr
 | Left mouse or Shift (hold) | Shoot a web and swing; release to let go |
 | Space | Jump (hold on the ground to charge a super jump). Mid-swing: jump off the web with a flip |
 | Right mouse or E | Web-zip to the point under the crosshair. Zipping to a ledge launches you over it |
+| F | Punch, punch, kick combo; lunges at a thug within a few meters |
+| Q or middle mouse | Web-shoot the thug under the crosshair (right mouse does the same when aimed at one) |
 | C or Ctrl | Dive |
 | T | Cycle time of day: morning, noon, golden hour, night |
 | R | Return to the Empire State deck |
@@ -31,7 +33,21 @@ Then open the printed URL (for example http://localhost:8000). Three.js loads fr
 | P or Esc | Pause menu: resume, or go back to the main menu |
 | H | Show or hide the controls panel |
 
-Touch devices get a thumbstick plus Swing, Jump, Zip and Dive buttons.
+Touch devices get a thumbstick plus Swing, Jump, Zip and Hit buttons, and a pause button.
+
+## Suits
+
+Pick a suit on the start screen or in the pause menu: black with red webbing, red and blue, or white with a hood and pink and teal accents. The choice is remembered in your browser.
+
+## Thugs
+
+Two thugs at a time turn up on a rooftop near the Empire State Building, the Chrysler Building, the Flatiron or Times Square. A red tracker marks the nearest one: a diamond over their head when they are on screen, an arrow at the screen edge when they are not.
+
+- **Web them.** A web shot glues a thug in place. More webs wrap them fully and buy more time, but they tear free after a few seconds.
+- **Fight them.** F chains punch, punch, kick. Three hits or a kick finisher knock a thug out, and any hit on a webbed thug knocks them out immediately. A long fall off a roof knocks them out too.
+- **They hit back.** Punches do 12 damage and knock you back. Health regenerates after a few seconds out of combat. At zero you wake up back on the Empire State deck.
+
+When both thugs are down, a new pair appears at another landmark.
 
 ## Physics
 
@@ -66,7 +82,9 @@ The hero is a jointed body built from lathe-turned limbs in a form-fitting black
 | `src/colliders.js` | Convex prism collision world, sphere resolution and raycasts |
 | `src/city.js` | Street grid, Broadway, lots, generic buildings, park, traffic, street furniture, rivers |
 | `src/landmarks.js` | Empire State, Chrysler and Flatiron |
-| `src/hero.js` | Character model and procedural animation |
+| `src/hero.js` | Character model and procedural animation (shared by the hero and the thugs) |
+| `src/skins.js` | Suits and thug outfits |
+| `src/enemies.js` | Thug AI, web traps, melee combat and spawning |
 | `src/web.js` | Web strand rendering (shoot, sag, release) |
 | `src/camera.js` | Third-person camera with collision and speed FOV |
 | `src/environment.js` | Sky, sun and moon, fog, clouds, stars, time-of-day presets |

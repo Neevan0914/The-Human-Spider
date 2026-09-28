@@ -10,6 +10,8 @@ import { createMaterials, setNight } from './materials.js';
 import { Environment, TIMES } from './environment.js';
 import { buildCity, locate } from './city.js';
 import { Hero } from './hero.js';
+import { HERO_SKINS, heroSkin } from './skins.js';
+import { EnemyManager } from './enemies.js';
 import { WebLine } from './web.js';
 import { Player } from './player.js';
 import { ThirdPersonCamera } from './camera.js';
@@ -68,7 +70,9 @@ const col = new Colliders(40);
 const env = new Environment(renderer, scene, quality);
 const input = new Input(canvas);
 const audio = new Audio();
-let M, city, hero, web, player, cam;
+let M, city, hero, web, player, cam, enemies;
+let skinId = 'noir';
+try { skinId = localStorage.getItem('hs-skin') || 'noir'; } catch { /* storage unavailable */ }
 let timeIndex = 0;
 let mode = 'loading';
 let showHelp = false;
@@ -109,11 +113,19 @@ async function boot() {
   await frame();
   city = buildCity(scene, M, col, f => setProgress(0.25 + f * 0.65));
   await frame();
-  hero = new Hero();
+  hero = new Hero(heroSkin(skinId));
   scene.add(hero.root);
   web = new WebLine(scene);
   player = new Player(col, hero, web, audio);
   cam = new ThirdPersonCamera(camera, col);
+  enemies = new EnemyManager(scene, col, player, audio, [
+    { name: 'Empire State Building', x: -65, z: -330 },
+    { name: 'Chrysler Building', x: 427, z: -870 },
+    { name: 'Flatiron Building', x: 21, z: 339 },
+    { name: 'Times Square', x: -260, z: -186 },
+  ]);
+  enemies.onMessage = toast;
+  buildSkinPickers();
   setTime(timeIndex);
   resetPlayer();
   setProgress(1);
@@ -124,7 +136,7 @@ async function boot() {
   go.textContent = 'Start swinging';
   mode = 'menu';
   go.addEventListener('click', start);
-  window.__game = { player, cam, city, col, scene, renderer, setTime, input };
+  window.__game = { player, cam, city, col, scene, renderer, setTime, input, enemies, setSkin };
 }
 
 function resetPlayer() {
@@ -143,6 +155,7 @@ function start() {
   if (isTouch) $('touch').hidden = false;
   mode = 'play';
   resetPlayer();
+  enemies.reset();
   input.requestLock();
   canvas.focus();
 }
@@ -176,6 +189,7 @@ function toMainMenu() {
   $('start').hidden = false;
   if (document.pointerLockElement) document.exitPointerLock();
   web.release();
+  enemies.reset();
   resetPlayer();
   audio.wind(0, 300);
   $('go').focus();
@@ -208,8 +222,45 @@ function setQuality(q) {
 }
 if (quality === 'low') setQuality('low');
 
+// ------------------------------------------------------------------- skins
+function setSkin(id) {
+  skinId = id;
+  hero.setSkin(heroSkin(id));
+  try { localStorage.setItem('hs-skin', id); } catch { /* storage unavailable */ }
+  document.querySelectorAll('.skins button').forEach(b => b.setAttribute('aria-checked', b.dataset.skin === id ? 'true' : 'false'));
+}
+
+function buildSkinPickers() {
+  for (const holder of document.querySelectorAll('.skins')) {
+    holder.innerHTML = '';
+    for (const s of HERO_SKINS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.skin = s.id;
+      b.id = `${holder.id}-${s.id}`;
+      b.title = s.label;
+      b.setAttribute('aria-label', s.label);
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', s.id === skinId ? 'true' : 'false');
+      b.style.setProperty('--a', s.colors[0]);
+      b.style.setProperty('--b', s.colors[1]);
+      b.addEventListener('click', () => setSkin(s.id));
+      holder.appendChild(b);
+    }
+  }
+}
+
+let toastT = 0;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  toastT = 3.2;
+}
+
 // --------------------------------------------------------------------- HUD
 const hud = {
+  hp: $('hpfill'), kos: $('kos'), arrow: $('tarrow'), mark: $('tmark'), markD: $('tmarkd'), arrowD: $('tarrowd'),
   spd: $('spd'), alt: $('alt'), state: $('state'), sign: $('signText'), lm: $('landmark'),
   anchor: $('anchor'), cross: $('cross'), noweb: $('noweb'), help: $('help'),
 };
@@ -237,6 +288,39 @@ function updateHUD(dt) {
   } else hud.anchor.classList.remove('show');
   hud.cross.classList.toggle('zip', !!player.zipPreview);
   hud.noweb.classList.toggle('show', player.noAnchor > 0);
+  hud.cross.classList.toggle('lock', !!enemies.aim);
+  hud.hp.style.width = `${player.hp}%`;
+  hud.hp.parentElement.classList.toggle('low', player.hp < 35);
+  hud.kos.textContent = enemies.defeated;
+  if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').classList.remove('show'); }
+
+  // Tracker: a marker over the nearest thug, or an edge arrow when off screen.
+  const foe = enemies.nearest(player.p);
+  if (!foe) { hud.mark.hidden = true; hud.arrow.hidden = true; }
+  else {
+    foe.chest(_v); _v.y += 1.25;
+    const dist = `${Math.round(player.p.distanceTo(foe.p))} m`;
+    _v.project(camera);
+    const behind = _v.z > 1;
+    if (!behind && Math.abs(_v.x) < 0.94 && Math.abs(_v.y) < 0.9) {
+      hud.mark.hidden = false; hud.arrow.hidden = true;
+      hud.mark.style.left = `${(_v.x * 0.5 + 0.5) * innerWidth}px`;
+      hud.mark.style.top = `${(-_v.y * 0.5 + 0.5) * innerHeight}px`;
+      hud.mark.classList.toggle('webbed', foe.state === 'webbed');
+      hud.markD.textContent = dist;
+    } else {
+      let x = _v.x, y = _v.y;
+      if (behind) { x = -x; y = -y; }
+      if (Math.abs(x) < 1e-3 && Math.abs(y) < 1e-3) y = -1;
+      const ang = Math.atan2(y, x);
+      const rx = innerWidth / 2 - 56, ry = innerHeight / 2 - 56;
+      hud.arrow.hidden = false; hud.mark.hidden = true;
+      hud.arrow.style.left = `${innerWidth / 2 + Math.cos(ang) * rx}px`;
+      hud.arrow.style.top = `${innerHeight / 2 - Math.sin(ang) * ry}px`;
+      hud.arrow.style.setProperty('--rot', `${-ang}rad`);
+      hud.arrowD.textContent = dist;
+    }
+  }
 
   // landmark banner
   let near = null;
@@ -280,9 +364,15 @@ function loop() {
       else pause();
     }
     if (!isPaused()) {
+      enemies.handleInput(input, cam);
       player.update(dt, input, cam);
       cam.update(dt, player, input.look);
       audio.wind(player.speed, player.p.y);
+      enemies.update(dt);
+      if (player.hp <= 0) {
+        toast('Knocked out. Back to the Empire State deck.');
+        resetPlayer();
+      }
       updateHUD(dt);
     }
     speedFx += (Math.max(0, (player.speed - 22) / 45) - speedFx) * (1 - Math.exp(-dt * 4));

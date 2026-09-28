@@ -457,18 +457,12 @@ const SUIT_BLACK = '#0b0b0e';
 const SUIT_RED = '#d0121b';
 
 // Web pattern that wraps limbs: vertical strands with sagging cross strands.
-export function makeSuitTexture(base = SUIT_BLACK, line = SUIT_RED, seed = 29) {
+// bands: [[u0, u1, color, webLineColor|null], ...] paints vertical panels
+// (u runs around the limb) on top of the base.
+export function makeSuitTexture(base = SUIT_BLACK, line = SUIT_RED, seed = 29, opts = {}) {
   const S = 512, r = mulberry32(seed);
   const cv = makeCanvas(S), c = cv.getContext('2d');
   const hc = makeCanvas(S), h = hc.getContext('2d');
-  c.fillStyle = base; c.fillRect(0, 0, S, S);
-  h.fillStyle = gray(0.3); h.fillRect(0, 0, S, S);
-  // fabric grain
-  for (let i = 0; i < 26000; i++) {
-    const v = r() < 0.5 ? 255 : 0;
-    c.fillStyle = `rgba(${v},${v},${v},${0.03 + r() * 0.03})`;
-    c.fillRect(r() * S, r() * S, 1, 1);
-  }
   const cols = 8, rows = 8, cw = S / cols, rh = S / rows;
   const drawWeb = (ctx, color, width) => {
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
@@ -482,8 +476,30 @@ export function makeSuitTexture(base = SUIT_BLACK, line = SUIT_RED, seed = 29) {
       ctx.stroke();
     }
   };
-  drawWeb(c, line, 3.2);
-  drawWeb(h, gray(1), 5);
+  const paint = (color, webColor, x0, x1) => {
+    c.save(); h.save();
+    c.beginPath(); c.rect(x0, 0, x1 - x0, S); c.clip();
+    h.beginPath(); h.rect(x0, 0, x1 - x0, S); h.clip();
+    c.fillStyle = color; c.fillRect(0, 0, S, S);
+    h.fillStyle = gray(0.3); h.fillRect(0, 0, S, S);
+    if (webColor) { drawWeb(c, webColor, 3.2); drawWeb(h, gray(1), 5); }
+    c.restore(); h.restore();
+  };
+  paint(base, line, 0, S);
+  for (const [u0, u1, color, web] of opts.bands || []) {
+    paint(color, web, u0 * S, u1 * S);
+    // seam piping along the panel edges
+    c.fillStyle = 'rgba(0,0,0,0.55)';
+    c.fillRect(u0 * S - 1.5, 0, 3, S); c.fillRect(u1 * S - 1.5, 0, 3, S);
+    h.fillStyle = gray(0.9);
+    h.fillRect(u0 * S - 1.5, 0, 3, S); h.fillRect(u1 * S - 1.5, 0, 3, S);
+  }
+  // fabric grain
+  for (let i = 0; i < 26000; i++) {
+    const v = r() < 0.5 ? 255 : 0;
+    c.fillStyle = `rgba(${v},${v},${v},${0.03 + r() * 0.03})`;
+    c.fillRect(r() * S, r() * S, 1, 1);
+  }
   return { map: canvasTexture(cv), bumpMap: canvasTexture(hc, false) };
 }
 
@@ -491,15 +507,73 @@ export function makeRedSuitTexture() {
   return makeSuitTexture(SUIT_RED, '#140608', 31);
 }
 
+// Plain cloth for street clothes: knit (hoodies) or denim.
+export function makeFabric(color, kind = 'knit', seed = 41) {
+  const S = 256, r = mulberry32(seed);
+  const cv = makeCanvas(S), c = cv.getContext('2d');
+  c.fillStyle = color; c.fillRect(0, 0, S, S);
+  if (kind === 'denim') {
+    for (let y = 0; y < S; y += 2) for (let x = 0; x < S; x += 4) {
+      c.fillStyle = `rgba(255,255,255,${0.04 + r() * 0.08})`;
+      c.fillRect(x + (y / 2) % 4, y, 2, 1);
+    }
+  } else {
+    for (let y = 0; y < S; y += 3) {
+      c.fillStyle = `rgba(0,0,0,${0.05 + r() * 0.05})`;
+      c.fillRect(0, y, S, 1);
+    }
+  }
+  for (let i = 0; i < 9000; i++) {
+    const v = r() < 0.5 ? 255 : 0;
+    c.fillStyle = `rgba(${v},${v},${v},${0.04 + r() * 0.05})`;
+    c.fillRect(r() * S, r() * S, 1, 1);
+  }
+  return canvasTexture(cv);
+}
+
+// Knit balaclava with an eye slit, in the head sphere's UV space.
+export function makeBalaclava(knit = '#1b1c1f', skin = '#b07a5a', seed = 43) {
+  const W = 256, H = 128, r = mulberry32(seed);
+  const cv = makeCanvas(W, H), c = cv.getContext('2d');
+  const img = c.createImageData(W, H), d = img.data;
+  const K = hexToRgb(knit), Sk = hexToRgb(skin);
+  for (let py = 0; py < H; py++) {
+    const th = (py + 0.5) / H * Math.PI;
+    for (let px = 0; px < W; px++) {
+      const ph = (px + 0.5) / W * Math.PI * 2;
+      const dx = -Math.cos(ph) * Math.sin(th), dy = Math.cos(th), dz = Math.sin(ph) * Math.sin(th);
+      const ex = Math.atan2(dx, dz), ey = Math.asin(dy);
+      let col = K.map(v => v * (0.85 + ((py % 3) === 0 ? -0.1 : 0.05) + r() * 0.1));
+      if (Math.abs(ex) < 0.62 && Math.abs(ey - 0.1) < 0.11) {
+        col = Sk;
+        for (const s of [-1, 1]) {
+          const e = Math.hypot((ex - s * 0.3) / 0.12, (ey - 0.1) / 0.06);
+          if (e < 1) col = e < 0.55 ? [25, 20, 18] : [235, 230, 225];
+        }
+      }
+      const i = (py * W + px) * 4;
+      d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+    }
+  }
+  c.putImageData(img, 0, 0);
+  const t = canvasTexture(cv);
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
+
 // Mask painted per pixel in the head sphere's UV space: a radial web centered
 // on the face with large white eye lenses in thick black frames.
-export function makeMaskTexture() {
+export function makeMaskTexture(opts = {}) {
   const W = 1024, H = 512;
   const cv = makeCanvas(W, H), c = cv.getContext('2d');
   const hc = makeCanvas(W, H), hctx = hc.getContext('2d');
   const img = c.createImageData(W, H), d = img.data;
   const himg = hctx.createImageData(W, H), hd = himg.data;
-  const red = [208, 18, 27], black = [11, 11, 14], white = [240, 242, 245], frame = [6, 6, 8];
+  const red = opts.line === null ? null : hexToRgb(opts.line || '#d0121b');
+  const black = hexToRgb(opts.base || '#0b0b0e');
+  const white = hexToRgb(opts.lens || '#f0f2f5');
+  const frame = hexToRgb(opts.frame || '#060608');
+  const frameW = opts.frameWidth ?? 1.35;
   // web center slightly below the eyes (nose)
   const F = [0, -0.18, 1]; const fl = Math.hypot(...F); F[0] /= fl; F[1] /= fl; F[2] /= fl;
   // reference axis for the azimuth around F
@@ -527,7 +601,7 @@ export function makeMaskTexture() {
       const rk = Math.max(1, Math.round(ra / ringStep));
       const ringDist = Math.abs(ra - rk * ringStep);
       let col = black, hv = 0.3;
-      if (alpha > 0.05 && (spokeDist < lw || ringDist < lw)) { col = red; hv = 1; }
+      if (red && alpha > 0.05 && (spokeDist < lw || ringDist < lw)) { col = red; hv = 1; }
 
       // eyes (yaw/pitch space)
       const ex = Math.atan2(dx, dz), ey = Math.asin(dy);
@@ -540,7 +614,7 @@ export function makeMaskTexture() {
         let dd = Math.hypot(rx / 0.34, ry / 0.2);
         // pointed inner-lower tip
         if (rx * s < 0) dd = Math.hypot(rx / 0.4, ry / 0.2);
-        if (dd < 1.35) { col = frame; hv = 0.55; }
+        if (dd < frameW) { col = frame; hv = 0.55; }
         if (dd < 1.0) {
           const shade = 1 - Math.max(0, ry / 0.2) * 0.08;
           col = [white[0] * shade, white[1] * shade, white[2] * shade]; hv = 0.45;
@@ -561,11 +635,12 @@ export function makeMaskTexture() {
 }
 
 // Red spider emblem with long angular legs.
-export function makeEmblemTexture() {
+export function makeEmblemTexture(color = SUIT_RED, scale = 1) {
   const S = 512;
   const cv = makeCanvas(S), c = cv.getContext('2d');
   c.clearRect(0, 0, S, S);
-  c.fillStyle = SUIT_RED; c.strokeStyle = SUIT_RED;
+  c.translate(256, 256); c.scale(scale, scale); c.translate(-256, -256);
+  c.fillStyle = color; c.strokeStyle = color;
   c.lineJoin = 'miter'; c.lineCap = 'round';
   const legs = [
     [[238, 200], [150, 150], [118, 36]],
