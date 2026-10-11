@@ -67,7 +67,7 @@ export class Player {
   }
 
   // Knockback and damage from a thug's punch.
-  hurt(amount, dir) {
+  hurt(amount, dir, knock = 7, lift = 4) {
     if (this.hurtT > 0) return;
     this.hp = Math.max(0, this.hp - amount);
     this.hurtT = 0.45;
@@ -75,8 +75,9 @@ export class Player {
     this.shake = Math.max(this.shake, 0.35);
     if (this.state === 'swing' || this.state === 'zip') this.web.release();
     if (this.state === 'wall' || this.state === 'swing' || this.state === 'zip') this.state = 'air';
-    this.v.x += dir.x * 7; this.v.z += dir.z * 7;
-    if (this.state === 'ground') { this.v.y = 4; this.state = 'air'; this.p.y += 0.05; }
+    this.v.x += dir.x * knock; this.v.z += dir.z * knock;
+    if (this.state === 'ground') { this.v.y = lift; this.state = 'air'; this.p.y += 0.05; }
+    else this.v.y += lift * 0.5;
     this.audio.land(0.6);
   }
 

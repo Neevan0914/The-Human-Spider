@@ -35,20 +35,27 @@ function cocoonTexture() {
   return t;
 }
 
-class Enemy {
-  constructor(mgr, skinIndex, pos) {
+export class Enemy {
+  // opts: { scale, hp, mass, webKO, escape }
+  constructor(mgr, skin, pos, opts = {}) {
     this.mgr = mgr;
-    this.hero = new Hero(thugSkin(skinIndex));
-    this.scale = 1.04 + (skinIndex % 3) * 0.03;
+    this.hero = new Hero(skin);
+    this.scale = opts.scale ?? 1.05;
     this.hero.root.scale.setScalar(this.scale);
     mgr.scene.add(this.hero.root);
     this.p = pos.clone();
     this.home = pos.clone();
     this.v = new THREE.Vector3();
     this.yaw = Math.random() * Math.PI * 2;
+    this.pitch = 0;
     this.state = 'idle';
     this.t = 0;
-    this.hp = 3;
+    this.maxHp = this.hp = opts.hp ?? 3;
+    this.mass = opts.mass ?? 1;
+    this.webKO = opts.webKO ?? true;      // any hit while webbed knocks out
+    this.escapeTime = opts.escape ?? 5.5;  // seconds a web holds
+    this.flying = false;
+    this.isBoss = false;
     this.webs = 0;
     this.escape = 0;
     this.wanderTo = null;
@@ -69,189 +76,238 @@ class Enemy {
   chest(out) { return out.set(this.p.x, this.p.y + 0.45 * this.scale, this.p.z); }
 
   web() {
-    if (!this.active) return;
+    if (!this.active || this.escapeTime <= 0) return false;
     this.webs = Math.min(3, this.webs + 1);
-    this.escape = this.state === 'webbed' ? Math.min(10, this.escape + 3) : 5.5;
+    this.escape = this.state === 'webbed' ? Math.min(this.escapeTime * 1.8, this.escape + this.escapeTime * 0.55) : this.escapeTime;
     this.state = 'webbed';
+    this.flying = false;
     this.v.x *= 0.2; this.v.z *= 0.2;
+    return true;
   }
 
   takeHit(dmg, dir, heavy) {
     if (!this.active) return false;
-    if (this.state === 'webbed') { dmg = 99; heavy = true; }
+    if (this.state === 'webbed') {
+      if (this.webKO) { dmg = 99; heavy = true; } else dmg *= 2;
+    }
     this.hp -= dmg;
-    const k = heavy ? 11 : 4.5;
+    const k = (heavy ? 11 : 4.5) / this.mass;
     this.v.x += dir.x * k; this.v.z += dir.z * k;
-    this.v.y = heavy ? 6.5 : 2.5;
+    this.v.y = (heavy ? 6.5 : 2.5) / Math.sqrt(this.mass);
     this.grounded = false;
     this.webs = 0; this.cocoon.visible = false;
     if (this.hp <= 0) this.knockOut();
-    else { this.state = 'stun'; this.t = heavy ? 0.8 : 0.45; }
+    else this.onHurt(heavy);
     return true;
   }
+
+  onHurt(heavy) { this.state = 'stun'; this.t = heavy ? 0.8 : 0.45; }
 
   knockOut() {
     if (this.state === 'down') return;
     this.state = 'down';
+    this.flying = false;
     this.downT = 0;
     this.webs = 0;
     this.cocoon.visible = false;
     this.mgr.onDefeat(this);
   }
 
-  update(dt, player) {
-    const mgr = this.mgr, P = player.p, p = this.p;
-    const dx = P.x - p.x, dz = P.z - p.z;
-    const dist = Math.hypot(dx, dz), dy = P.y - p.y;
-    const toP = _v.set(dx, 0, dz).normalize();
-    let speed = 0, dir = null, anim = 'idle', animT = 0, faceP = false;
-    this.t -= dt;
-    const sameLevel = Math.abs(dy) < 3;
-
+  // Thug brain. Returns what the body should do this frame.
+  think(dt, player, c) {
+    const mgr = this.mgr, p = this.p;
+    const o = { dir: null, speed: 0, anim: 'idle', animT: 0, faceP: false };
     switch (this.state) {
       case 'idle': {
-        this.wanderT -= dt;
-        if (!this.wanderTo || this.wanderT <= 0) {
-          const a = Math.random() * Math.PI * 2, r = Math.random() * 4;
-          this.wanderTo = new THREE.Vector3(this.home.x + Math.cos(a) * r, 0, this.home.z + Math.sin(a) * r);
-          this.wanderT = 3 + Math.random() * 4;
-        }
-        const wx = this.wanderTo.x - p.x, wz = this.wanderTo.z - p.z, wl = Math.hypot(wx, wz);
-        if (wl > 0.6) { dir = new THREE.Vector3(wx / wl, 0, wz / wl); speed = 1.5; }
-        if (dist < 28 && sameLevel && player.state !== 'swing') { this.state = 'chase'; mgr.alert(this); }
-        else if (dist < 45) { faceP = true; speed = 0; anim = 'guard'; }
+        this.wander(dt, o);
+        if (c.dist < 28 && c.sameLevel && player.state !== 'swing') { this.state = 'chase'; mgr.alert(this); }
+        else if (c.dist < 45) { o.faceP = true; o.speed = 0; o.anim = 'guard'; }
         break;
       }
       case 'chase': {
-        faceP = true;
-        anim = 'guard';
-        if (dist > 1.5) { dir = toP.clone(); speed = 5.4; }
-        if (dist < 1.8 && sameLevel) { this.state = 'windup'; this.t = 0.5; }
-        if (dist > 42 || Math.abs(dy) > 8) { this.state = 'idle'; this.wanderTo = null; }
+        o.faceP = true;
+        o.anim = 'guard';
+        if (c.dist > 1.5) { o.dir = c.toP.clone(); o.speed = 5.4; }
+        if (c.dist < 1.8 && c.sameLevel) { this.state = 'windup'; this.t = 0.5; }
+        if (c.dist > 42 || Math.abs(c.dy) > 8) { this.state = 'idle'; this.wanderTo = null; }
         break;
       }
       case 'windup': {
-        faceP = true;
-        anim = 'punchR'; animT = 0.12 * (1 - this.t / 0.5);
+        o.faceP = true;
+        o.anim = 'punchR'; o.animT = 0.12 * (1 - this.t / 0.5);
         if (this.t <= 0) {
-          if (dist < 2.3 && Math.abs(dy) < 1.6) player.hurt(12, toP);
+          if (c.dist < 2.3 && Math.abs(c.dy) < 1.6) player.hurt(12, c.toP);
           this.state = 'recover'; this.t = 0.55;
         }
         break;
       }
       case 'recover': {
-        faceP = true;
-        anim = 'punchR'; animT = 0.2 + 0.8 * (1 - this.t / 0.55);
+        o.faceP = true;
+        o.anim = 'punchR'; o.animT = 0.2 + 0.8 * (1 - this.t / 0.55);
         if (this.t <= 0) this.state = 'chase';
         break;
       }
-      case 'stun': {
-        anim = 'hurt';
+      default: this.commonStates(dt, o);
+    }
+    void p;
+    return o;
+  }
+
+  wander(dt, o) {
+    const p = this.p;
+    this.wanderT -= dt;
+    if (!this.wanderTo || this.wanderT <= 0) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 4;
+      this.wanderTo = new THREE.Vector3(this.home.x + Math.cos(a) * r, 0, this.home.z + Math.sin(a) * r);
+      this.wanderT = 3 + Math.random() * 4;
+    }
+    const wx = this.wanderTo.x - p.x, wz = this.wanderTo.z - p.z, wl = Math.hypot(wx, wz);
+    if (wl > 0.6) { o.dir = new THREE.Vector3(wx / wl, 0, wz / wl); o.speed = 1.5; }
+  }
+
+  // stun / webbed / down behave the same for everyone.
+  commonStates(dt, o) {
+    switch (this.state) {
+      case 'stun':
+        o.anim = 'hurt';
         if (this.t <= 0) this.state = 'chase';
         break;
-      }
-      case 'webbed': {
-        anim = 'struggle';
+      case 'webbed':
+        o.anim = 'struggle';
         this.escape -= dt;
         if (this.escape <= 0) {
           this.webs = 0;
           this.state = 'stun'; this.t = 0.5;
-          mgr.audio.rip();
+          this.mgr.audio.rip();
         }
         break;
-      }
-      case 'down': {
-        anim = 'down';
+      case 'down':
+        o.anim = 'down';
         this.downT += dt;
         if (this.downT > 5) {
           this.hero.root.position.y -= dt * 0.5;
           if (this.downT > 7) this.remove();
         }
         break;
+    }
+  }
+
+  update(dt, player) {
+    const P = player.p, p = this.p;
+    const dx = P.x - p.x, dz = P.z - p.z;
+    const c = {
+      dx, dz, dist: Math.hypot(dx, dz), dy: P.y - p.y,
+      toP: new THREE.Vector3(dx, 0, dz).normalize(),
+    };
+    c.sameLevel = Math.abs(c.dy) < 3;
+    c.dist3 = Math.hypot(c.dist, c.dy);
+    this.t -= dt;
+    const o = this.think(dt, player, c);
+    this.move(dt, o, c);
+    this.visual(dt, o, c);
+  }
+
+  move(dt, o, c) {
+    const p = this.p, mgr = this.mgr;
+    let speed = o.speed;
+    if (this.flying) {
+      // Flyers steer straight toward a desired velocity; no gravity.
+      const fv = o.fly || _c.set(0, 0, 0);
+      this.v.lerp(fv, 1 - Math.exp(-(o.flyResp ?? 3) * dt));
+      p.addScaledVector(this.v, dt);
+      this.collide(true);
+    } else {
+      // Don't walk off roofs.
+      if (o.dir && speed > 0 && this.grounded && !o.charge) {
+        const ax = p.x + o.dir.x * 1.1, az = p.z + o.dir.z * 1.1;
+        const hit = mgr.col.raycast(_c.set(ax, p.y, az), DOWN_V, 3);
+        if (!hit && p.y - FEET > 0.5) { speed = 0; o.ledge = true; }
       }
+      if (this.grounded && this.state !== 'down') {
+        const tx = o.dir ? o.dir.x * speed : 0, tz = o.dir ? o.dir.z * speed : 0;
+        const k = 1 - Math.exp(-(this.state === 'stun' ? 3 : (o.accel ?? 10)) * dt);
+        this.v.x += (tx - this.v.x) * k;
+        this.v.z += (tz - this.v.z) * k;
+      } else if (this.grounded) {
+        this.v.x *= 1 - Math.min(1, dt * 5); this.v.z *= 1 - Math.min(1, dt * 5);
+      }
+      if (o.anim === 'idle' && speed > 0.5) o.anim = 'run';
+      if (o.anim === 'guard' && speed > 2) o.anim = 'run';
+      this.v.y -= G * dt;
+      p.addScaledVector(this.v, dt);
+      this.collide(false);
     }
-
-    // Don't walk off roofs.
-    if (dir && speed > 0 && this.grounded) {
-      const ax = p.x + dir.x * 1.1, az = p.z + dir.z * 1.1;
-      const hit = mgr.col.raycast(_c.set(ax, p.y, az), DOWN_V, 3);
-      if (!hit && p.y - FEET > 0.5) speed = 0;
-    }
-    if (this.grounded && this.state !== 'down') {
-      const tx = dir ? dir.x * speed : 0, tz = dir ? dir.z * speed : 0;
-      const k = 1 - Math.exp(-(this.state === 'stun' ? 3 : 10) * dt);
-      this.v.x += (tx - this.v.x) * k;
-      this.v.z += (tz - this.v.z) * k;
-    } else if (this.grounded) {
-      this.v.x *= 1 - Math.min(1, dt * 5); this.v.z *= 1 - Math.min(1, dt * 5);
-    }
-    if (anim === 'idle' && speed > 0.5) anim = 'run';
-    if (anim === 'guard' && speed > 2) anim = 'run';
-
-    // Physics: gravity, move, collide.
-    this.v.y -= G * dt;
-    p.addScaledVector(this.v, dt);
-    this.collide();
-
     // Keep a little space from the hero.
-    if (this.active && dist < 0.8 && Math.abs(dy) < 1.5) {
-      p.x -= toP.x * (0.8 - dist); p.z -= toP.z * (0.8 - dist);
+    const minD = 0.8 * this.scale;
+    if (this.active && c.dist < minD && Math.abs(c.dy) < 1.5) {
+      p.x -= c.toP.x * (minD - c.dist); p.z -= c.toP.z * (minD - c.dist);
     }
+  }
 
-    // Facing
+  visual(dt, o, c) {
+    const p = this.p;
     let yawT = this.yaw;
-    if (faceP) yawT = Math.atan2(dx, dz);
+    if (o.faceP) yawT = Math.atan2(c.dx, c.dz);
+    else if (o.faceDir) yawT = Math.atan2(o.faceDir.x, o.faceDir.z);
     else if (Math.hypot(this.v.x, this.v.z) > 0.5 && this.active) yawT = Math.atan2(this.v.x, this.v.z);
     let d = yawT - this.yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
-    if (this.state !== 'webbed' && this.state !== 'down') this.yaw += d * (1 - Math.exp(-dt * 10));
+    if (this.state !== 'webbed' && this.state !== 'down') this.yaw += d * (1 - Math.exp(-dt * (o.turn ?? 10)));
+    this.pitch += ((o.pitch ?? 0) - this.pitch) * (1 - Math.exp(-dt * 6));
 
-    // Visuals
     const root = this.hero.root;
     _q.setFromAxisAngle(UP, this.yaw);
     if (this.state === 'down') {
       _q2.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
       _q.multiply(_q2);
       root.quaternion.slerp(_q, 1 - Math.exp(-dt * 8));
-      if (this.downT <= 5) root.position.set(p.x, p.y - FEET + 0.16, p.z);
+      if (this.downT <= 5) root.position.set(p.x, p.y - FEET + 0.16 * this.scale, p.z);
     } else {
+      if (this.pitch) { _q2.setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.pitch); _q.multiply(_q2); }
       root.quaternion.copy(_q);
-      root.position.set(p.x, p.y + (this.scale - 1) * FEET, p.z);
+      root.position.set(p.x, p.y, p.z);
     }
     this.phase += dt * (5 + Math.hypot(this.v.x, this.v.z) * 0.55);
-    this.hero.animate(dt, { state: anim, speed: Math.hypot(this.v.x, this.v.z), phase: this.phase, t: animT, webSide: 'R' });
+    this.hero.animate(dt, { state: o.anim, speed: Math.hypot(this.v.x, this.v.z), phase: this.phase, t: o.animT, webSide: o.side || 'R' });
 
     const cc = this.cocoon;
     cc.visible = this.state === 'webbed';
     if (cc.visible) {
       const full = this.webs >= 2;
       const wob = Math.sin(this.mgr.time * 13) * 0.04 * Math.min(1, this.escape);
-      cc.position.set(p.x, p.y + (full ? 0.02 : -0.45), p.z);
+      cc.position.set(p.x, p.y + (full ? 0.02 : -0.45) * this.scale, p.z);
       cc.scale.set(0.47 * this.scale, (full ? 1.02 : 0.55) * this.scale, 0.4 * this.scale);
       cc.rotation.set(wob, this.yaw, wob * 0.6);
     }
   }
 
-  collide() {
+  collide(flying) {
     const p = this.p, col = this.mgr.col;
-    let ground = false;
-    const cb = n => { if (n.y > 0.7) ground = true; const vn = this.v.dot(n); if (vn < 0) this.v.addScaledVector(n, -vn); };
-    for (const [off, step] of [[-0.55, 0.55], [0.3, 0]]) {
+    let ground = false, wall = false;
+    const cb = n => {
+      if (n.y > 0.7) ground = true; else if (Math.abs(n.y) < 0.3) wall = true;
+      const vn = this.v.dot(n); if (vn < 0) this.v.addScaledVector(n, -vn);
+    };
+    const r = R * this.scale;
+    for (const [off, step] of [[-0.55 * this.scale, flying ? 0 : 0.55], [0.3 * this.scale, 0]]) {
       _c.set(p.x, p.y + off, p.z);
-      col.resolveSphere(_c, R, cb, step);
+      col.resolveSphere(_c, r, cb, step);
       p.set(_c.x, _c.y - off, _c.z);
     }
-    if (p.y < FEET) { p.y = FEET; ground = true; if (this.v.y < 0) this.v.y = 0; }
-    // A long fall knocks a thug out.
-    if (ground && !this.grounded && this.lastVy < -19 && this.active) { this.hp = 0; this.knockOut(); }
+    const feet = FEET * this.scale;
+    if (p.y < feet) { p.y = feet; ground = true; if (this.v.y < 0) this.v.y = 0; }
+    // A long fall knocks a thug out (bosses just land hard).
+    if (ground && !this.grounded && this.lastVy < -19 && this.active && !this.isBoss) { this.hp = 0; this.knockOut(); }
     this.lastVy = this.v.y;
     this.grounded = ground;
+    this.hitWall = wall;
   }
 
   remove() {
     this.removed = true;
     this.mgr.scene.remove(this.hero.root);
     this.mgr.scene.remove(this.cocoon);
+    if (this.onRemove) this.onRemove();
   }
 }
 
@@ -279,11 +335,25 @@ export class EnemyManager {
     this.cocoonMat = new THREE.MeshStandardMaterial({ map: cocoonTexture(), alphaTest: 0.35, roughness: 0.6, side: THREE.DoubleSide });
     this.aim = null;
     this.hand = new THREE.Vector3();
+    // bosses (factory injected by main.js to avoid a circular import)
+    this.bossFactory = null;
+    this.bossTypes = [];
+    this.bossOrder = [];
+    this.boss = null;
+    this.wave = 0;
+    this.projectiles = [];
+    this.fx = [];
+    this.saidSand = false;
   }
 
   reset() {
     for (const e of this.enemies) e.remove();
     this.enemies = [];
+    for (const pr of this.projectiles) this.scene.remove(pr.mesh);
+    for (const f of this.fx) this.scene.remove(f.mesh);
+    this.projectiles = []; this.fx = [];
+    this.boss = null;
+    this.wave = 0;
     this.pending = null;
     this.shot = null;
     this.shotWeb.release();
@@ -293,6 +363,38 @@ export class EnemyManager {
   get active() { return this.enemies.filter(e => e.active); }
 
   // Pick the next landmark and find a flat rooftop near it.
+  // Two waves of thugs, then a boss, and repeat.
+  spawnWave() {
+    this.wave++;
+    if (this.bossFactory && this.wave % 3 === 0) this.spawnBoss();
+    else this.spawnPair();
+  }
+
+  nextSite() {
+    if (!this.siteOrder.length) {
+      this.siteOrder = this.sites.slice().sort(() => Math.random() - 0.5);
+      if (this.siteOrder[0] === this.lastSite) this.siteOrder.push(this.siteOrder.shift());
+    }
+    const site = this.siteOrder.shift();
+    this.lastSite = site;
+    return site;
+  }
+
+  spawnBoss(type) {
+    if (!type) {
+      if (!this.bossOrder.length) this.bossOrder = this.bossTypes.slice().sort(() => Math.random() - 0.5);
+      type = this.bossOrder.shift();
+    }
+    const site = this.nextSite();
+    const spot = this.findSpot(site);
+    if (type === 'goblin' || type === 'vulture') spot.y += 8;
+    const b = this.bossFactory(this, type, spot);
+    this.enemies.push(b);
+    this.boss = b;
+    this.onMessage(`${b.name} is near the ${site.name}`);
+    return b;
+  }
+
   spawnPair() {
     if (!this.siteOrder.length) {
       this.siteOrder = this.sites.slice().sort(() => Math.random() - 0.5);
@@ -308,7 +410,8 @@ export class EnemyManager {
         const q = this.findNear(spot, a);
         if (q) pos.copy(q);
       }
-      this.enemies.push(new Enemy(this, this.skinCounter++, pos));
+      const k = this.skinCounter++;
+      this.enemies.push(new Enemy(this, thugSkin(k), pos, { scale: 1.04 + (k % 3) * 0.03 }));
     }
     this.onMessage(`Two thugs spotted near the ${site.name}`);
   }
@@ -430,13 +533,116 @@ export class EnemyManager {
     this.audio.swish();
   }
 
-  onDefeat() {
+  onDefeat(e) {
     this.defeated++;
     this.audio.hit(1.3);
+    if (e && e.isBoss) {
+      this.onMessage(`${e.name} is down!`);
+      if (this.boss === e) this.boss = null;
+    }
     if (!this.active.length) {
-      this.onMessage('Area clear');
+      if (!(e && e.isBoss)) this.onMessage('Area clear');
       this.spawnTimer = 7;
     }
+  }
+
+  // ---- projectiles and effects ----
+  _projMesh(type) {
+    if (!this._pm) {
+      this._pm = {
+        bomb: [new THREE.SphereGeometry(0.22, 14, 10), new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 1.2, roughness: 0.5 })],
+        feather: [new THREE.BoxGeometry(0.06, 0.03, 0.75), new THREE.MeshStandardMaterial({ color: 0xb8c0c8, metalness: 0.9, roughness: 0.25 })],
+        sand: [new THREE.IcosahedronGeometry(0.4, 1), new THREE.MeshStandardMaterial({ color: 0xc2a271, roughness: 1, flatShading: true })],
+      };
+    }
+    const [g, m] = this._pm[type];
+    const mesh = new THREE.Mesh(g, m);
+    mesh.castShadow = true;
+    this.scene.add(mesh);
+    return mesh;
+  }
+
+  _spawnProj(type, from, v, o) {
+    this.projectiles.push({ type, p: from.clone(), v, mesh: this._projMesh(type), life: 4, ...o });
+  }
+
+  // Ballistic throw that leads a moving target.
+  lob(type, from, player) {
+    const d = from.distanceTo(player.p);
+    const T = Math.max(0.7, Math.min(1.5, d / 20));
+    const tgt = player.p.clone().addScaledVector(player.v, T * 0.5);
+    const v = tgt.sub(from).divideScalar(T);
+    v.y += 0.5 * G * T;
+    this._spawnProj(type, from, v, { gravity: true, dmg: 18, knock: 12, aoe: 4.2, radius: 0.35 });
+  }
+
+  // Straight shot with a little lead and an optional yaw spread.
+  fire(type, from, player, spread = 0) {
+    const tgt = player.p.clone().addScaledVector(player.v, 0.25);
+    tgt.y += 0.2;
+    const dir = tgt.sub(from).normalize();
+    if (spread) dir.applyAxisAngle(UP, spread);
+    const sp = type === 'feather' ? 42 : 26;
+    const o = type === 'feather'
+      ? { dmg: 8, knock: 4, aoe: 0, radius: 0.45 }
+      : { dmg: 12, knock: 9, aoe: 1.8, radius: 0.7 };
+    this._spawnProj(type, from, dir.multiplyScalar(sp), o);
+    this.audio.swish();
+  }
+
+  burst(type, pos, size = 1) {
+    const color = { bomb: 0xff8a2a, dust: 0xb8ab95, sand: 0xcaa874 }[type];
+    const mat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.9, depthWrite: false,
+      blending: type === 'bomb' ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), mat);
+    mesh.position.copy(pos);
+    mesh.scale.setScalar(0.2);
+    this.scene.add(mesh);
+    this.fx.push({ mesh, t: 0, size });
+  }
+
+  updateProjectiles(dt) {
+    const player = this.player;
+    for (const pr of this.projectiles) {
+      pr.life -= dt;
+      if (pr.gravity) pr.v.y -= G * dt;
+      const step = pr.v.length() * dt;
+      const dir = pr.v.clone().normalize();
+      const wallHit = this.col.raycast(pr.p, dir, step + 0.05);
+      pr.p.addScaledVector(pr.v, dt);
+      pr.mesh.position.copy(pr.p);
+      if (pr.type === 'feather') pr.mesh.lookAt(pr.p.clone().add(dir));
+      else pr.mesh.rotation.x += dt * 8;
+      const pd = pr.p.distanceTo(player.p);
+      const hitPlayer = pd < pr.radius + 0.55;
+      if (hitPlayer || wallHit || pr.p.y < 0.2 || pr.life <= 0) {
+        if (wallHit) pr.p.set(wallHit.point.x, wallHit.point.y, wallHit.point.z);
+        if (pr.aoe) {
+          this.burst(pr.type === 'bomb' ? 'bomb' : 'sand', pr.p, pr.aoe);
+          const d = pr.p.distanceTo(player.p);
+          if (d < pr.aoe) {
+            const away = player.p.clone().sub(pr.p).setY(0).normalize();
+            player.hurt(Math.round(pr.dmg * (1 - d / pr.aoe * 0.5)), away, pr.knock, 6);
+          }
+          if (pr.type === 'bomb') { this.audio.land(1.2); if (d < 25) player.shake = Math.max(player.shake, 0.35); }
+        } else if (hitPlayer) {
+          player.hurt(pr.dmg, dir, pr.knock, 2);
+        }
+        pr.dead = true;
+        this.scene.remove(pr.mesh);
+      }
+    }
+    this.projectiles = this.projectiles.filter(p => !p.dead);
+    for (const f of this.fx) {
+      f.t += dt;
+      const k = f.t / 0.45;
+      f.mesh.scale.setScalar(0.2 + f.size * Math.min(1, k * 1.6));
+      f.mesh.material.opacity = Math.max(0, 0.9 * (1 - k));
+      if (k >= 1) { f.dead = true; this.scene.remove(f.mesh); f.mesh.material.dispose(); f.mesh.geometry.dispose(); }
+    }
+    this.fx = this.fx.filter(f => !f.dead);
   }
 
   alert() { /* thugs noticing the hero could bark lines here */ }
@@ -448,7 +654,7 @@ export class EnemyManager {
 
     if (!this.active.length) {
       this.spawnTimer -= dt;
-      if (this.spawnTimer <= 0) { this.spawnTimer = 1e9; this.spawnPair(); }
+      if (this.spawnTimer <= 0) { this.spawnTimer = 1e9; this.spawnWave(); }
     }
 
     // Melee resolution
@@ -479,13 +685,17 @@ export class EnemyManager {
       s.t += dt;
       s.e.chest(_c);
       this.shotWeb.to.copy(_c);
-      if (!s.hit && s.t > 0.12) { s.hit = true; s.e.web(); }
+      if (!s.hit && s.t > 0.12) {
+        s.hit = true;
+        if (!s.e.web() && !this.saidSand && s.e.type === 'sandman') { this.saidSand = true; this.onMessage('Webs slip right through the sand. Use your fists!'); }
+      }
       if (s.t > 0.3) { this.shotWeb.release(); this.shot = null; }
     }
     player.hero.handWorld('R', this.hand);
     this.shotWeb.update(dt, this.hand, 0, 0.022);
 
     for (const e of this.enemies) e.update(dt, player);
+    this.updateProjectiles(dt);
     this.enemies = this.enemies.filter(e => !e.removed);
   }
 }

@@ -26,6 +26,7 @@ Then open the printed URL (for example http://localhost:8000). Three.js loads fr
 | F | Punch, punch, kick combo; lunges at a thug within a few meters |
 | Q or middle mouse | Web-shoot the thug under the crosshair (right mouse does the same when aimed at one) |
 | C or Ctrl | Dive |
+| B | Summon a boss right away (one at a time) |
 | T | Cycle time of day: morning, noon, golden hour, night |
 | R | Return to the Empire State deck |
 | G | Toggle graphics quality |
@@ -48,6 +49,19 @@ Two thugs at a time turn up on a rooftop near the Empire State Building, the Chr
 - **They hit back.** Punches do 12 damage and knock you back. Health regenerates after a few seconds out of combat. At zero you wake up back on the Empire State deck.
 
 When both thugs are down, a new pair appears at another landmark.
+
+## Bosses
+
+Every third wave is a boss instead of a pair of thugs, at a random landmark (or press B to summon one). Bosses have a health bar at the bottom of the screen, hit harder, don't go down in one hit while webbed (webbed bosses take double damage instead), and only stagger once you break their guard.
+
+| Boss | Look | Moves | How to beat them |
+| --- | --- | --- | --- |
+| The Glider | Green plated armor, glowing yellow eyes, bat-wing glider | Circles overhead throwing bombs, then swoops through you | Web him: he drops off the glider and you get a few seconds to hit him |
+| The Stinger | Green scaled armor, segmented tail with a stinger | Long-reach tail stabs, punches, leaps between roofs | Keep moving; his stab has a wind-up you can see as the stinger glows |
+| The Winged Man | Olive flight suit, glowing goggles, mechanical blade wings | Feather-blade volleys and high-speed dive attacks | Web him out of the sky |
+| The Four Arms | Trench coat, round dark glasses, four steel arms | Arms rise and slam where you are standing | Webs only hold him for a moment; stay mobile and punish after a slam |
+| The Charger | Huge, horned, gray armor | Paws the ground and charges; heavy punches | Make him charge into a wall or web his legs mid-charge, then hit him while he is dazed |
+| Sandstorm | Green striped shirt, sand swirling around him | Fists that grow to giant size, sand blasts | Webs pass through sand, so use your fists |
 
 ## Physics
 
@@ -84,7 +98,8 @@ The hero is a jointed body built from lathe-turned limbs in a form-fitting black
 | `src/landmarks.js` | Empire State, Chrysler and Flatiron |
 | `src/hero.js` | Character model and procedural animation (shared by the hero and the thugs) |
 | `src/skins.js` | Suits and thug outfits |
-| `src/enemies.js` | Thug AI, web traps, melee combat and spawning |
+| `src/enemies.js` | Thug AI, web traps, melee combat, projectiles and spawning |
+| `src/bosses.js` | The six bosses: gear, attacks and AI |
 | `src/web.js` | Web strand rendering (shoot, sag, release) |
 | `src/camera.js` | Third-person camera with collision and speed FOV |
 | `src/environment.js` | Sky, sun and moon, fog, clouds, stars, time-of-day presets |

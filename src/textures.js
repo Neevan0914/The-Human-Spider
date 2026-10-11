@@ -703,3 +703,114 @@ export function makeWebSplat() {
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
 }
+
+// ---------------------------------------------------------------------------
+// Boss outfits
+// ---------------------------------------------------------------------------
+
+// Armor plating: rows of plates with seams, highlights and optional rivets.
+export function makeArmor(base, seam, opts = {}) {
+  const S = 512, r = mulberry32(opts.seed || 101);
+  const cw = opts.cell || 64, ch = opts.cellH || cw;
+  const cv = makeCanvas(S), c = cv.getContext('2d');
+  const hc = makeCanvas(S), h = hc.getContext('2d');
+  c.fillStyle = seam; c.fillRect(0, 0, S, S);
+  h.fillStyle = gray(0.2); h.fillRect(0, 0, S, S);
+  for (let y = 0, row = 0; y < S; y += ch, row++) {
+    const off = opts.offsetRows && row % 2 ? cw / 2 : 0;
+    for (let x = -cw; x < S + cw; x += cw) {
+      const px = x + off + 2, py = y + 2, pw = cw - 4, ph = ch - 4;
+      const g = c.createLinearGradient(0, py, 0, py + ph);
+      g.addColorStop(0, jitter(base, 0.12, r));
+      g.addColorStop(1, jitter(base, 0.05, r).replace('rgb', 'rgba').replace(')', ',1)'));
+      c.fillStyle = g;
+      if (opts.round) { c.beginPath(); c.ellipse(px + pw / 2, py + ph / 2, pw / 2, ph / 2, 0, 0, 7); c.fill(); }
+      else c.fillRect(px, py, pw, ph);
+      c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(px, py, pw, ph * 0.18);
+      h.fillStyle = gray(0.85);
+      if (opts.round) { h.beginPath(); h.ellipse(px + pw / 2, py + ph / 2, pw / 2, ph / 2, 0, 0, 7); h.fill(); }
+      else h.fillRect(px, py, pw, ph);
+      if (opts.rivets) {
+        c.fillStyle = 'rgba(0,0,0,0.5)'; h.fillStyle = gray(1);
+        for (const [rx, ry] of [[6, 6], [pw - 6, 6], [6, ph - 6], [pw - 6, ph - 6]]) {
+          c.beginPath(); c.arc(px + rx, py + ry, 2.2, 0, 7); c.fill();
+          h.beginPath(); h.arc(px + rx, py + ry, 2.5, 0, 7); h.fill();
+        }
+      }
+    }
+  }
+  noise(c, S, S, r, 12000, 0.06, false);
+  return { map: canvasTexture(cv), bumpMap: canvasTexture(hc, false) };
+}
+
+// Horizontal stripes (e.g. a striped knit shirt).
+export function makeStripes(colors, count = 12, seed = 103) {
+  const S = 256, r = mulberry32(seed);
+  const cv = makeCanvas(S), c = cv.getContext('2d');
+  const bh = S / count;
+  for (let i = 0; i < count; i++) {
+    c.fillStyle = colors[i % colors.length];
+    c.fillRect(0, i * bh, S, bh + 1);
+  }
+  for (let y = 0; y < S; y += 3) { c.fillStyle = 'rgba(0,0,0,0.08)'; c.fillRect(0, y, S, 1); }
+  noise(c, S, S, r, 6000, 0.06, true);
+  return canvasTexture(cv);
+}
+
+// Faces and helmets painted in the head sphere's UV space (ex = yaw from the
+// front, ey = pitch). Features are drawn symmetrically.
+export function makeFaceTexture(o) {
+  const W = 512, H = 256, r = mulberry32(o.seed || 107);
+  const cv = makeCanvas(W, H), c = cv.getContext('2d');
+  const ev = makeCanvas(W, H), e = ev.getContext('2d');
+  const img = c.createImageData(W, H), d = img.data;
+  const eimg = e.createImageData(W, H), ed = eimg.data;
+  const C = x => (x ? hexToRgb(x) : null);
+  const base = C(o.base), hair = o.hair && C(o.hair.color), win = o.window && C(o.window.color);
+  const eye = o.eyes && C(o.eyes.color), eyeFrame = o.eyes && C(o.eyes.frame);
+  const glass = o.glasses && C(o.glasses.color), mouth = o.mouth && C(o.mouth.color), brow = o.brows && C(o.brows.color);
+  for (let py = 0; py < H; py++) {
+    const th = (py + 0.5) / H * Math.PI;
+    for (let px = 0; px < W; px++) {
+      const ph = (px + 0.5) / W * Math.PI * 2;
+      const dx = -Math.cos(ph) * Math.sin(th), dy = Math.cos(th), dz = Math.sin(ph) * Math.sin(th);
+      const ex = Math.atan2(dx, dz), ey = Math.asin(dy), ax = Math.abs(ex);
+      let col = base, glow = null;
+      if (win && ax < o.window.ex && ey > o.window.min && ey < o.window.max) col = win;
+      if (hair && (ey > o.hair.top - 0.08 * Math.cos(ex) || (ax > 1.5 && ey > (o.hair.back ?? -0.1)))) col = hair;
+      if (brow) {
+        const by = o.brows.cy + (ax - 0.3) * (o.brows.tilt || 0);
+        if (ax > 0.08 && ax < 0.08 + o.brows.w && Math.abs(ey - by) < o.brows.h) col = brow;
+      }
+      if (eye) {
+        const lx = ax - o.eyes.cx, ly = ey - o.eyes.cy, rot = o.eyes.rot || 0;
+        const rx = lx * Math.cos(rot) + ly * Math.sin(rot), ry = -lx * Math.sin(rot) + ly * Math.cos(rot);
+        const dd = Math.hypot(rx / o.eyes.rx, ry / o.eyes.ry);
+        if (eyeFrame && dd < 1.3) col = eyeFrame;
+        if (dd < 1) { col = eye; if (o.eyes.glow) glow = eye; }
+      }
+      if (glass) {
+        const dd = Math.hypot(ax - o.glasses.cx, ey - o.glasses.cy) / o.glasses.r;
+        if (dd < 1.18) col = C(o.glasses.frame || '#222');
+        if (dd < 1) col = glass;
+        if (ax < o.glasses.cx - o.glasses.r && Math.abs(ey - o.glasses.cy - 0.03) < 0.012) col = C(o.glasses.frame || '#222');
+      }
+      if (mouth) {
+        const my = o.mouth.cy + (o.mouth.curve || 0) * (ax * ax);
+        if (ax < o.mouth.w && Math.abs(ey - my) < o.mouth.h) col = mouth;
+      }
+      if (o.seam && ax < 0.015 && ey > 0.2) col = C(o.seam);
+      const k = 0.92 + r() * 0.08;
+      const i = (py * W + px) * 4;
+      d[i] = col[0] * k; d[i + 1] = col[1] * k; d[i + 2] = col[2] * k; d[i + 3] = 255;
+      ed[i] = glow ? glow[0] : 0; ed[i + 1] = glow ? glow[1] : 0; ed[i + 2] = glow ? glow[2] : 0; ed[i + 3] = 255;
+    }
+  }
+  c.putImageData(img, 0, 0);
+  e.putImageData(eimg, 0, 0);
+  const map = canvasTexture(cv);
+  map.wrapT = THREE.ClampToEdgeWrapping;
+  const emissiveMap = canvasTexture(ev);
+  emissiveMap.wrapT = THREE.ClampToEdgeWrapping;
+  return { map, emissiveMap };
+}

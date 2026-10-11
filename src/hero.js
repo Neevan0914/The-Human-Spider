@@ -393,6 +393,38 @@ export class Hero {
         }, 1 - Math.exp(-dt * 10));
         break;
       }
+      case 'glide': {
+        const b = S(t * 2.2) * 0.05;
+        this.pose({
+          hips: [0, 0.55, 0], spine: [0.18, -0.25, 0], chest: [0.05, -0.2, 0], neck: [0, 0.3, 0], head: [-0.1, 0.15, 0],
+          shR: [-0.5 + b, 0, -0.7], elR: [-0.9, 0, 0], wrR: [0, 0, 0], shL: [0.15, 0, 0.9], elL: [-0.5, 0, 0], wrL: [0, 0, 0],
+          hipR: [-0.55, 0, -0.18], kneeR: [0.95, 0, 0], ankR: [-0.35, 0, 0],
+          hipL: [-0.2, 0, 0.18], kneeL: [0.6, 0, 0], ankL: [-0.3, 0, 0],
+        }, k);
+        break;
+      }
+      case 'fly': {
+        const b = S(t * 3) * 0.08;
+        this.pose({
+          hips: [0, 0, 0], spine: [-0.15, 0, 0], chest: [-0.1, 0, 0], neck: [-0.35, 0, 0], head: [-0.45, 0, 0],
+          shR: [0.7, 0, -0.45 - b], elR: [-0.35, 0, 0], wrR: [0, 0, 0], shL: [0.7, 0, 0.45 + b], elL: [-0.35, 0, 0], wrL: [0, 0, 0],
+          hipR: [0.25 + b, 0, -0.06], kneeR: [0.35, 0, 0], ankR: [0.6, 0, 0],
+          hipL: [0.25 - b, 0, 0.06], kneeL: [0.5, 0, 0], ankL: [0.6, 0, 0],
+        }, k);
+        break;
+      }
+      case 'throw': {
+        // a.t: 0-0.7 wind back overhead, 0.7-1 snap forward
+        const w = Math.min(1, a.t / 0.7), f = Math.max(0, (a.t - 0.7) / 0.3);
+        this.pose({
+          hips: [0, 0.3 * w - 0.5 * f, 0], spine: [-0.15 * w + 0.35 * f, 0.3 * w - 0.4 * f, 0], chest: [0, 0, 0], neck: [0, 0, 0], head: [0, -0.2 * w, 0],
+          shR: [-2.8 * w + 1.4 * f, 0, -0.35], elR: [-1.7 * w + 1.6 * f, 0, 0], wrR: [0, 0, 0],
+          shL: [-0.9, 0, 0.5], elL: [-1.2, 0, 0], wrL: [0, 0, 0],
+          hipR: [0.2, 0, -0.1], kneeR: [0.4, 0, 0], ankR: [0, 0, 0],
+          hipL: [-0.45, 0, 0.1], kneeL: [0.45, 0, 0], ankL: [0, 0, 0],
+        }, 1 - Math.exp(-dt * 25));
+        break;
+      }
       case 'crouch': {
         this.pose({
           hips: [0, 0, 0], spine: [0.5, 0, 0], chest: [0.15, 0, 0], neck: [0, 0, 0], head: [-0.6, 0, 0],
