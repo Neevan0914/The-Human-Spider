@@ -24,9 +24,9 @@ Then open the printed URL (for example http://localhost:8000). Three.js loads fr
 | Space | Jump (hold on the ground to charge a super jump). Mid-swing: jump off the web with a flip |
 | Right mouse or E | Web-zip to the point under the crosshair. Zipping to a ledge launches you over it |
 | F | Punch, punch, kick combo; lunges at a thug within a few meters |
-| Q or middle mouse | Web-shoot the thug under the crosshair (right mouse does the same when aimed at one) |
+| Q or middle mouse | Web-shoot the enemy under the crosshair (right mouse does the same when aimed at one). Thugs take 1 web, bosses 5 |
 | C or Ctrl | Dive |
-| B | Summon a boss right away (one at a time) |
+| B | Summon a boss right away (they also show up on their own) |
 | T | Cycle time of day: morning, noon, golden hour, night |
 | R | Return to the Empire State deck |
 | G | Toggle graphics quality |
@@ -52,16 +52,20 @@ When both thugs are down, a new pair appears at another landmark.
 
 ## Bosses
 
-Every third wave is a boss instead of a pair of thugs, at a random landmark (or press B to summon one). Bosses have a health bar at the bottom of the screen, hit harder, don't go down in one hit while webbed (webbed bosses take double damage instead), and only stagger once you break their guard.
+A boss turns up on its own every minute or two, at a random landmark, and thug waves pause until it is down (press B to summon one right away). Bosses have a health bar at the bottom of the screen, hit harder, and only stagger once you break their guard.
 
-| Boss | Look | Moves | How to beat them |
-| --- | --- | --- | --- |
-| The Glider | Green plated armor, glowing yellow eyes, bat-wing glider | Circles overhead throwing bombs, then swoops through you | Web him: he drops off the glider and you get a few seconds to hit him |
-| The Stinger | Green scaled armor, segmented tail with a stinger | Long-reach tail stabs, punches, leaps between roofs | Keep moving; his stab has a wind-up you can see as the stinger glows |
-| The Winged Man | Olive flight suit, glowing goggles, mechanical blade wings | Feather-blade volleys and high-speed dive attacks | Web him out of the sky |
-| The Four Arms | Trench coat, round dark glasses, four steel arms | Arms rise and slam where you are standing | Webs only hold him for a moment; stay mobile and punish after a slam |
-| The Charger | Huge, horned, gray armor | Paws the ground and charges; heavy punches | Make him charge into a wall or web his legs mid-charge, then hit him while he is dazed |
-| Sandstorm | Green striped shirt, sand swirling around him | Fists that grow to giant size, sand blasts | Webs pass through sand, so use your fists |
+- **Webbing a boss takes 5 quick hits.** The pips under the health bar fill as webs land and drain if you stop. A trapped boss breaks free after 1.5 to 2.5 seconds, takes double damage while trapped, and can't be re-trapped for 4 seconds (the pips turn red).
+- **Pin them to buildings.** If the web that traps someone (thug or boss) carries on into a wall within a few meters, they get stuck to the wall and stay trapped longer.
+- **Street fights get heavy.** Ground bosses that end up at street level tear cars out of traffic and throw them at you. Hit them hard enough to stagger them and they drop the car.
+
+| Boss | Moves | How to beat them |
+| --- | --- | --- |
+| Green Goblin | Circles on his glider throwing pumpkin bombs, then swoops through you | Trap him to knock him off the glider, then hit him on the ground |
+| Scorpion | Long-reach tail stabs (the stinger glows first), punches, leaps between roofs | Dodge the stab, then punish |
+| Vulture | Feather-blade volleys and high-speed dives | Trap him to drop him out of the sky |
+| Doctor Octopus | Steel arms rise, then slam where you are standing; throws cars on the street | Stay mobile and punish after a slam |
+| Rhino | Paws the ground and charges; heavy punches; throws cars | Make him charge into a wall, or land 3 webs on him mid-charge to trip him, then hit him while he is dazed |
+| Sandman | Fists that grow to giant size, sand blasts, throws cars | Webs pass straight through sand, so use your fists |
 
 ## Physics
 

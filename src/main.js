@@ -12,7 +12,7 @@ import { buildCity, locate } from './city.js';
 import { Hero } from './hero.js';
 import { HERO_SKINS, heroSkin } from './skins.js';
 import { EnemyManager } from './enemies.js';
-import { makeBoss, BOSS_TYPES } from './bosses.js';
+import { makeBoss, BOSS_TYPES, WEBS_TO_TRAP } from './bosses.js';
 import { WebLine } from './web.js';
 import { Player } from './player.js';
 import { ThirdPersonCamera } from './camera.js';
@@ -128,6 +128,7 @@ async function boot() {
   enemies.onMessage = toast;
   enemies.bossFactory = makeBoss;
   enemies.bossTypes = BOSS_TYPES;
+  enemies.traffic = city.traffic;
   buildSkinPickers();
   setTime(timeIndex);
   resetPlayer();
@@ -263,7 +264,7 @@ function toast(text) {
 
 // --------------------------------------------------------------------- HUD
 const hud = {
-  hp: $('hpfill'), bossbar: $('bossbar'), bossname: $('bossname'), bossfill: $('bossfill'), kos: $('kos'), arrow: $('tarrow'), mark: $('tmark'), markD: $('tmarkd'), arrowD: $('tarrowd'),
+  hp: $('hpfill'), bosswebs: $('bosswebs'), bossbar: $('bossbar'), bossname: $('bossname'), bossfill: $('bossfill'), kos: $('kos'), arrow: $('tarrow'), mark: $('tmark'), markD: $('tmarkd'), arrowD: $('tarrowd'),
   spd: $('spd'), alt: $('alt'), state: $('state'), sign: $('signText'), lm: $('landmark'),
   anchor: $('anchor'), cross: $('cross'), noweb: $('noweb'), help: $('help'),
 };
@@ -300,6 +301,12 @@ function updateHUD(dt) {
   if (!hud.bossbar.hidden) {
     hud.bossname.textContent = boss.name;
     hud.bossfill.style.width = `${Math.max(0, boss.hp / boss.maxHp) * 100}%`;
+    // web pips: how close the boss is to being trapped
+    const n = boss.state === 'webbed' ? WEBS_TO_TRAP : boss.webHits;
+    hud.bosswebs.classList.toggle('immune', boss.webImmune > 0);
+    hud.bosswebs.classList.toggle('trapped', boss.state === 'webbed');
+    hud.bosswebs.classList.toggle('none', boss.escapeTime <= 0);
+    [...hud.bosswebs.children].forEach((pip, i) => pip.classList.toggle('on', i < n));
   }
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').classList.remove('show'); }
 

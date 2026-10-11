@@ -1,13 +1,15 @@
 // Minor bosses. Each one reuses the Enemy body and physics and adds its own
 // gear and brain:
-//   Glider     - armored pilot on a bat-wing glider, throws bombs, swoops
-//   Stinger    - scaled armor and a stinger tail with long reach, leaps
-//   Winged Man - mechanical wings, feather-blade volleys and dive attacks
-//   Four Arms  - trench coat and four steel arms that slam from range
-//   Charger    - horned, armored bulk that charges; dazed if he hits a wall
-//   Sandstorm  - sand fists that grow huge and sand blasts; webs pass through
-// Flyers drop out of the sky when webbed. Bosses don't fold to one hit while
-// webbed (they take double damage instead) and shrug off small hits.
+//   Green Goblin   - armored pilot on a bat-wing glider, bombs and swoops
+//   Scorpion       - scaled armor and a stinger tail with long reach, leaps
+//   Vulture        - mechanical wings, feather-blade volleys and dives
+//   Doctor Octopus - trench coat and four steel arms that slam from range
+//   Rhino          - horned, armored bulk that charges; dazed by walls
+//   Sandman        - sand fists that grow huge and sand blasts; webs pass through
+// It takes WEBS_TO_TRAP hits in quick succession to trap a boss, the trap is
+// short, and they can't be re-trapped for a few seconds after breaking free.
+// Flyers drop out of the sky when trapped. Ground bosses that end up on the
+// street tear cars out of traffic and throw them.
 import * as THREE from 'three';
 import { Enemy } from './enemies.js';
 import { bossSkin } from './skins.js';
@@ -19,13 +21,15 @@ const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quatern
 export const BOSS_TYPES = ['goblin', 'scorpion', 'vulture', 'ock', 'rhino', 'sandman'];
 
 export const BOSS_NAMES = {
-  goblin: 'The Glider',
-  scorpion: 'The Stinger',
-  vulture: 'The Winged Man',
-  ock: 'The Four Arms',
-  rhino: 'The Charger',
-  sandman: 'Sandstorm',
+  goblin: 'Green Goblin',
+  scorpion: 'Scorpion',
+  vulture: 'Vulture',
+  ock: 'Doctor Octopus',
+  rhino: 'Rhino',
+  sandman: 'Sandman',
 };
+
+export const WEBS_TO_TRAP = 5;
 
 const steel = () => new THREE.MeshStandardMaterial({ color: 0x9aa1a8, metalness: 0.9, roughness: 0.28 });
 
@@ -70,12 +74,108 @@ class Boss extends Enemy {
     this.aggro = o.aggro ?? 55;
     this.gear = new THREE.Group();
     this.hero.root.add(this.gear);
+    this.webHits = 0;
+    this.webDecay = 0;
+    this.webImmune = 0;
+    this.carCool = 4;
+    this.car = null;
   }
+
+  update(dt, player) {
+    const prev = this.state;
+    this.webImmune = Math.max(0, this.webImmune - dt);
+    this.carCool -= dt;
+    if (this.webHits > 0) {
+      this.webDecay -= dt;
+      if (this.webDecay <= 0) { this.webHits--; this.webDecay = 0.9; }
+    }
+    super.update(dt, player);
+    if (prev === 'webbed' && this.state !== 'webbed') this.webImmune = 4;
+  }
+
+  // Webs pile up; only enough of them in quick succession trap a boss.
+  web(dir) {
+    if (!this.active || this.escapeTime <= 0) return false;
+    if (this.state === 'webbed') return true;
+    if (this.webImmune > 0) { this.mgr.burst('dust', this.chest(new THREE.Vector3()), 0.6); return true; }
+    this.webHits++;
+    this.webDecay = 2.5;
+    if (this.webHits < WEBS_TO_TRAP) return true;
+    this.webHits = 0;
+    this.dropCar();
+    return super.web(dir);
+  }
+
+  visual(dt, o, c) {
+    super.visual(dt, o, c);
+    // partial webbing wraps the legs
+    if (this.state !== 'webbed' && this.webHits > 0 && this.active) {
+      const cc = this.cocoon, s = this.scale, k = this.webHits / WEBS_TO_TRAP;
+      cc.visible = true;
+      cc.position.set(this.p.x, this.p.y - (0.75 - 0.3 * k) * s, this.p.z);
+      cc.scale.set(0.38 * s, (0.15 + 0.35 * k) * s, 0.34 * s);
+      cc.rotation.set(0, this.yaw, 0);
+    }
+  }
+
+  // ---- cars ----
+  onStreet() { return this.grounded && this.p.y - 0.97 * this.scale < 2.5; }
+
+  tryCar(c) {
+    const mgr = this.mgr;
+    if (!mgr.traffic || this.carCool > 0 || !this.onStreet() || c.dist < 5 || c.dist > 45) return false;
+    const car = mgr.traffic.nearestCar(this.p.x, this.p.z, 18);
+    if (!car) { this.carCool = 1.5; return false; }
+    mgr.traffic.hide(car.c, 25);
+    const mesh = mgr.makeCarMesh(car.c.color);
+    mesh.position.set(car.x, 0, car.z);
+    mesh.rotation.set(0, car.yaw, 0);
+    this.car = { mesh, from: mesh.position.clone() };
+    this.state = 'carGrab'; this.t = 0.55;
+    this.carCool = 7 + Math.random() * 3;
+    this.mgr.onMessage(`${this.name} picked up a car!`);
+    return true;
+  }
+
+  holdPos(out) { return out.set(this.p.x, this.p.y + 1.35 * this.scale, this.p.z); }
+
+  carStates(dt, c, o, player) {
+    if (this.state !== 'carGrab' && this.state !== 'carHold') return false;
+    if (!this.car) { this.state = 'fight'; return false; }
+    o.faceP = true; o.anim = 'throw';
+    const m = this.car.mesh, hold = this.holdPos(new THREE.Vector3());
+    if (this.state === 'carGrab') {
+      const k = 1 - Math.max(0, this.t) / 0.55;
+      o.animT = 0.3 + 0.3 * k;
+      m.position.lerpVectors(this.car.from, hold, k).y += Math.sin(k * Math.PI) * 2;
+      m.rotation.z = k * 0.4;
+      if (this.t <= 0) { this.state = 'carHold'; this.t = 0.6; }
+    } else {
+      o.animT = 0.6 + 0.1 * (1 - this.t / 0.6);
+      m.position.copy(hold);
+      m.rotation.y = this.yaw + Math.PI / 2;
+      if (this.t <= 0) {
+        this.mgr.throwCar(m, hold, player);
+        this.car = null;
+        this.done(1.6);
+      }
+    }
+    return true;
+  }
+
+  dropCar() {
+    if (!this.car) return;
+    this.mgr.throwCar(this.car.mesh, this.car.mesh.position.clone(), this.mgr.player, true);
+    this.car = null;
+  }
+
+  knockOut() { this.dropCar(); super.knockOut(); }
+  remove() { if (this.car) { this.mgr.scene.remove(this.car.mesh); this.car = null; } super.remove(); }
 
   // Bosses only stagger when their poise breaks.
   onHurt(heavy) {
     this.poise -= heavy ? 2 : 1;
-    if (this.poise <= 0) { this.state = 'stun'; this.t = 0.7; this.poise = this.maxPoise; }
+    if (this.poise <= 0) { this.dropCar(); this.state = 'stun'; this.t = 0.7; this.poise = this.maxPoise; }
     else if (this.state === 'webbed') this.state = 'fight';
   }
 
@@ -96,7 +196,7 @@ class Boss extends Enemy {
 // ---------------------------------------------------------------------------
 class Goblin extends Boss {
   constructor(mgr, pos) {
-    super(mgr, 'goblin', pos, { hp: 10, escape: 4, poise: 3 });
+    super(mgr, 'goblin', pos, { hp: 10, escape: 2.5, poise: 3 });
     this.flying = true;
     this.orbit = Math.random() * 6.28;
     // Bat-wing glider under the boots
@@ -191,7 +291,7 @@ class Goblin extends Boss {
 // ---------------------------------------------------------------------------
 class Scorpion extends Boss {
   constructor(mgr, pos) {
-    super(mgr, 'scorpion', pos, { hp: 12, escape: 3, poise: 4, scale: 1.1 });
+    super(mgr, 'scorpion', pos, { hp: 12, escape: 2, poise: 4, scale: 1.1 });
     const mat = this.hero.mat.torso, dark = this.hero.mat.hand;
     const base = new THREE.Object3D();
     base.position.set(0, -0.04, -0.12);
@@ -213,7 +313,12 @@ class Scorpion extends Boss {
     let curl = 0.3, glow = 0;
     switch (this.state) {
       case 'idle': o.faceP = false; o.anim = 'idle'; this.idleThink(dt, c, o); break;
+      case 'carGrab':
+      case 'carHold':
+        this.carStates(dt, c, o, player);
+        break;
       case 'fight':
+        if (this.tryCar(c)) break;
         if (c.dist > 3.2) { o.dir = c.toP.clone(); o.speed = 6.8; }
         if (c.dist > 9 && c.dist < 32 && Math.abs(c.dy) > 2.5 && this.grounded && this.cool <= 0) {
           // leap onto the hero's level
@@ -272,7 +377,7 @@ class Scorpion extends Boss {
 // ---------------------------------------------------------------------------
 class Vulture extends Boss {
   constructor(mgr, pos) {
-    super(mgr, 'vulture', pos, { hp: 9, escape: 4, poise: 3 });
+    super(mgr, 'vulture', pos, { hp: 9, escape: 2.5, poise: 3 });
     this.flying = true;
     this.orbit = Math.random() * 6.28;
     const metal = new THREE.MeshStandardMaterial({ color: 0x5d646b, metalness: 0.85, roughness: 0.35 });
@@ -368,7 +473,7 @@ class Vulture extends Boss {
 // ---------------------------------------------------------------------------
 class Ock extends Boss {
   constructor(mgr, pos) {
-    super(mgr, 'ock', pos, { hp: 14, escape: 2, poise: 4, scale: 1.08, aggro: 50 });
+    super(mgr, 'ock', pos, { hp: 14, escape: 1.5, poise: 4, scale: 1.08, aggro: 50 });
     const mat = steel();
     const coat = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.3, 0.8, 18, 1, true), this.hero.mat.torso.clone());
     coat.material.side = THREE.DoubleSide;
@@ -411,7 +516,12 @@ class Ock extends Boss {
     this.cool -= dt;
     switch (this.state) {
       case 'idle': o.faceP = false; o.anim = 'idle'; this.idleThink(dt, c, o); break;
+      case 'carGrab':
+      case 'carHold':
+        this.carStates(dt, c, o, player);
+        break;
       case 'fight':
+        if (this.tryCar(c)) break;
         if (c.dist > 3.6) { o.dir = c.toP.clone(); o.speed = 3.6; }
         else if (c.dist < 2.5) { o.dir = c.toP.clone().negate(); o.speed = 2.5; }
         if (this.cool <= 0 && c.dist < 4.6 && Math.abs(c.dy) < 4) {
@@ -472,7 +582,7 @@ class Ock extends Boss {
 // ---------------------------------------------------------------------------
 class Rhino extends Boss {
   constructor(mgr, pos) {
-    super(mgr, 'rhino', pos, { hp: 16, escape: 1.4, poise: 6, scale: 1.45, mass: 3.2, aggro: 50 });
+    super(mgr, 'rhino', pos, { hp: 16, escape: 1.5, poise: 6, scale: 1.45, mass: 3.2, aggro: 50 });
     // broad, heavy build
     this.hero.root.scale.set(this.scale * 1.2, this.scale, this.scale * 1.15);
     const horn = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.44, 12), new THREE.MeshStandardMaterial({ color: 0xcfc8b8, roughness: 0.5 }));
@@ -494,15 +604,20 @@ class Rhino extends Boss {
     super.onHurt(heavy);
   }
 
-  web() {
+  web(dir) {
     if (this.state === 'charge') {
-      // a web across the legs trips him mid-charge
-      this.state = 'dazed'; this.t = 2.2;
-      this.v.multiplyScalar(0.3);
-      this.mgr.onMessage && this.mgr.onMessage('Tripped him up!');
+      // three webs across the legs trip him mid-charge
+      this.tripHits = (this.tripHits || 0) + 1;
+      if (this.tripHits >= 3) {
+        this.tripHits = 0;
+        this.state = 'dazed'; this.t = 2.2;
+        this.v.multiplyScalar(0.3);
+        this.mgr.onMessage('Tripped him up!');
+      }
       return true;
     }
-    return super.web();
+    this.tripHits = 0;
+    return super.web(dir);
   }
 
   think(dt, player, c) {
@@ -510,7 +625,12 @@ class Rhino extends Boss {
     this.cool -= dt;
     switch (this.state) {
       case 'idle': o.faceP = false; o.anim = 'idle'; this.idleThink(dt, c, o); break;
+      case 'carGrab':
+      case 'carHold':
+        this.carStates(dt, c, o, player);
+        break;
       case 'fight':
+        if (this.tryCar(c)) break;
         if (c.dist > 2.2) { o.dir = c.toP.clone(); o.speed = 3.8; }
         if (this.cool <= 0 && c.dist > 5 && c.dist < 34 && Math.abs(c.dy) < 3) { this.state = 'paw'; this.t = 0.9; }
         else if (this.cool <= 0 && c.dist < 2.6 && Math.abs(c.dy) < 2) { this.state = 'punch'; this.t = 0.6; }
@@ -577,6 +697,7 @@ class Sandman extends Boss {
   }
 
   web() { this.mgr.burst('sand', this.chest(new THREE.Vector3()), 1); return false; }
+  visual(dt, o, c) { Enemy.prototype.visual.call(this, dt, o, c); }
 
   takeHit(dmg, dir, heavy) {
     this.mgr.burst('sand', this.chest(new THREE.Vector3()), heavy ? 1.6 : 1);
@@ -591,7 +712,12 @@ class Sandman extends Boss {
     let fist = 1;
     switch (this.state) {
       case 'idle': o.faceP = false; o.anim = 'idle'; this.idleThink(dt, c, o); break;
+      case 'carGrab':
+      case 'carHold':
+        this.carStates(dt, c, o, player);
+        break;
       case 'fight':
+        if (this.tryCar(c)) break;
         if (c.dist > 3) { o.dir = c.toP.clone(); o.speed = 4.2; }
         if (this.cool <= 0) {
           if (c.dist < 4 && Math.abs(c.dy) < 2.2) { this.state = 'fist'; this.t = 0.65; }

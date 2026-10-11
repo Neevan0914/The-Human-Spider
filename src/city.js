@@ -458,6 +458,7 @@ export function buildCity(scene, M, col, onProgress) {
       M.water.normalMap.offset.set(t * 0.004, t * 0.0025);
     },
     setNight(f) { traffic.setNight(f); },
+    traffic,
   };
 }
 
@@ -697,8 +698,30 @@ function buildTraffic(root, r) {
   const cycle = [22, 14];
   const e = im.instanceMatrix.array, le = lm.instanceMatrix.array;
 
+  const carPos = c => {
+    const lane = c.lane;
+    return lane.axis === 'z'
+      ? { x: lane.fixed, z: c.s, yaw: lane.dir > 0 ? 0 : Math.PI }
+      : { x: c.s, z: lane.fixed, yaw: lane.dir > 0 ? Math.PI / 2 : -Math.PI / 2 };
+  };
+
   return {
     get phase() { return phase; },
+    carGeo: car,
+    carMat,
+    // Nearest visible car within maxD of (x, z), for bosses to pick up.
+    nearestCar(x, z, maxD) {
+      let best = null, bd = maxD;
+      for (const c of cars) {
+        if (c.hidden > 0) continue;
+        const p = carPos(c);
+        const d = Math.hypot(p.x - x, p.z - z);
+        if (d < bd) { bd = d; best = { c, ...p }; }
+      }
+      return best;
+    },
+    // A taken car keeps its place in the lane but is invisible for a while.
+    hide(c, seconds) { c.hidden = seconds; },
     setNight(f) { lightMat.emissiveIntensity = 0.4 + f * 3; },
     update(dt, t) {
       phaseT += dt;
@@ -740,6 +763,13 @@ function buildTraffic(root, r) {
         }
         for (const c of cs) {
           const o = c.i * 16;
+          if (c.hidden > 0) {
+            c.hidden -= dt;
+            for (let q = 0; q < 16; q++) { e[o + q] = 0; le[o + q] = 0; }
+            e[o + 15] = le[o + 15] = 1;
+            e[o + 13] = le[o + 13] = -500;
+            continue;
+          }
           let x, z, fx, fz;
           if (lane.axis === 'z') { x = lane.fixed; z = c.s; fx = 0; fz = lane.dir; }
           else { x = c.s; z = lane.fixed; fx = lane.dir; fz = 0; }

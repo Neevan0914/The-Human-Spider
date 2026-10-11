@@ -174,3 +174,10 @@ h1 span { color: var(--red); }
 .bossbar .bar2 { height: 8px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.35); }
 .bossbar .bar2 i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #9c0d14, var(--red-hi)); transition: width .2s; }
 @media (max-width: 640px) { .bossbar { bottom: auto; top: calc(110px + env(safe-area-inset-top, 0px)); } }
+
+.bosswebs { display: flex; gap: 5px; justify-content: center; }
+.bosswebs i { width: 22px; height: 5px; background: rgba(255,255,255,.18); transition: background .15s; }
+.bosswebs i.on { background: var(--paper); box-shadow: 0 0 6px rgba(255,255,255,.6); }
+.bosswebs.immune i { background: rgba(255,47,55,.35); }
+.bosswebs.trapped i { background: #bfe6ff; }
+.bosswebs.none { display: none; }

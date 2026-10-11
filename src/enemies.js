@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Hero } from './hero.js';
 import { thugSkin } from './skins.js';
 import { WebLine } from './web.js';
-import { makeCanvas, mulberry32 } from './textures.js';
+import { makeCanvas, mulberry32, makeWebSplat } from './textures.js';
 
 const G = 22, FEET = 0.97, R = 0.4;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -75,14 +75,43 @@ export class Enemy {
 
   chest(out) { return out.set(this.p.x, this.p.y + 0.45 * this.scale, this.p.z); }
 
-  web() {
+  // dir: direction the web was travelling (used to pin them to a wall).
+  web(dir) {
     if (!this.active || this.escapeTime <= 0) return false;
+    const was = this.state === 'webbed';
     this.webs = Math.min(3, this.webs + 1);
-    this.escape = this.state === 'webbed' ? Math.min(this.escapeTime * 1.8, this.escape + this.escapeTime * 0.55) : this.escapeTime;
+    this.escape = was ? Math.min(this.escapeTime * 1.8, this.escape + this.escapeTime * 0.55) : this.escapeTime;
     this.state = 'webbed';
     this.flying = false;
     this.v.x *= 0.2; this.v.z *= 0.2;
+    if (!was && dir) this.tryPin(dir);
     return true;
+  }
+
+  // A web that carries on past them and hits a wall within a few meters
+  // sticks them to that wall.
+  tryPin(dir) {
+    const h = new THREE.Vector3(dir.x, 0, dir.z);
+    if (h.lengthSq() < 1e-4) return;
+    h.normalize();
+    const from = this.chest(new THREE.Vector3());
+    const hit = this.mgr.col.raycast(from, h, 6.5);
+    if (!hit || Math.abs(hit.normal.y) > 0.3) return;
+    const n = new THREE.Vector3(hit.normal.x, 0, hit.normal.z);
+    this.pin = {
+      pos: new THREE.Vector3(hit.point.x, hit.point.y - 0.45 * this.scale, hit.point.z).addScaledVector(n, 0.42 * this.scale),
+      n,
+      splat: this.mgr.addSplat(new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z), n),
+    };
+    this.webs = 3;
+    this.escape *= 1.6;
+    this.mgr.onMessage(this.isBoss ? `${this.name} is webbed to the wall!` : 'Webbed to the wall!');
+  }
+
+  clearPin() {
+    if (!this.pin) return;
+    this.mgr.scene.remove(this.pin.splat);
+    this.pin = null;
   }
 
   takeHit(dmg, dir, heavy) {
@@ -209,6 +238,16 @@ export class Enemy {
 
   move(dt, o, c) {
     const p = this.p, mgr = this.mgr;
+    if (this.pin) {
+      if (this.state === 'webbed') {
+        p.lerp(this.pin.pos, 1 - Math.exp(-14 * dt));
+        this.v.set(0, 0, 0);
+        this.grounded = true;
+        this.lastVy = 0;
+        return;
+      }
+      this.clearPin();
+    }
     let speed = o.speed;
     if (this.flying) {
       // Flyers steer straight toward a desired velocity; no gravity.
@@ -247,12 +286,13 @@ export class Enemy {
   visual(dt, o, c) {
     const p = this.p;
     let yawT = this.yaw;
-    if (o.faceP) yawT = Math.atan2(c.dx, c.dz);
+    if (this.pin) yawT = Math.atan2(this.pin.n.x, this.pin.n.z);
+    else if (o.faceP) yawT = Math.atan2(c.dx, c.dz);
     else if (o.faceDir) yawT = Math.atan2(o.faceDir.x, o.faceDir.z);
     else if (Math.hypot(this.v.x, this.v.z) > 0.5 && this.active) yawT = Math.atan2(this.v.x, this.v.z);
     let d = yawT - this.yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
-    if (this.state !== 'webbed' && this.state !== 'down') this.yaw += d * (1 - Math.exp(-dt * (o.turn ?? 10)));
+    if ((this.state !== 'webbed' || this.pin) && this.state !== 'down') this.yaw += d * (1 - Math.exp(-dt * (o.turn ?? 10)));
     this.pitch += ((o.pitch ?? 0) - this.pitch) * (1 - Math.exp(-dt * 6));
 
     const root = this.hero.root;
@@ -304,6 +344,7 @@ export class Enemy {
   }
 
   remove() {
+    this.clearPin();
     this.removed = true;
     this.mgr.scene.remove(this.hero.root);
     this.mgr.scene.remove(this.cocoon);
@@ -341,9 +382,31 @@ export class EnemyManager {
     this.bossOrder = [];
     this.boss = null;
     this.wave = 0;
+    this.bossTimer = 45;
     this.projectiles = [];
     this.fx = [];
     this.saidSand = false;
+    this.bossTimer = 45;
+    this.traffic = null;
+    this.splatMat = new THREE.MeshStandardMaterial({ map: makeWebSplat(), transparent: true, depthWrite: false, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -4 });
+  }
+
+  addSplat(point, n) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), this.splatMat);
+    m.position.copy(point).addScaledVector(n, 0.05);
+    m.lookAt(point.x + n.x, point.y + n.y, point.z + n.z);
+    m.rotation.z += Math.random() * 6;
+    this.scene.add(m);
+    return m;
+  }
+
+  makeCarMesh(color) {
+    const mat = this.traffic.carMat.clone();
+    mat.color.setHex(color);
+    const m = new THREE.Mesh(this.traffic.carGeo, mat);
+    m.castShadow = true;
+    this.scene.add(m);
+    return m;
   }
 
   reset() {
@@ -366,8 +429,7 @@ export class EnemyManager {
   // Two waves of thugs, then a boss, and repeat.
   spawnWave() {
     this.wave++;
-    if (this.bossFactory && this.wave % 3 === 0) this.spawnBoss();
-    else this.spawnPair();
+    this.spawnPair();
   }
 
   nextSite() {
@@ -494,14 +556,14 @@ export class EnemyManager {
     e.chest(_c);
     const n = _c.clone().sub(this.player.p).normalize().negate();
     this.shotWeb.attach(_c, n);
-    this.shot = { e, t: 0, hit: false };
+    this.shot = { e, t: 0, hit: false, dir: _c.clone().sub(this.player.p).normalize() };
     this.player.gestureT = 0.35;
     this.audio.thwip(1.35);
   }
 
   melee(player, cam) {
     if (player.attack && player.attack.t < player.attack.dur * 0.55) return;
-    if (player.state === 'swing' || player.state === 'zip' || player.state === 'wall') return;
+    if (player.state === 'swing' || player.state === 'zip') return;
     this.combo = this.comboT > 0 ? (this.combo + 1) % 3 : 0;
     this.comboT = 0.95;
     const kind = ['punchR', 'punchL', 'kick'][this.combo];
@@ -539,9 +601,10 @@ export class EnemyManager {
     if (e && e.isBoss) {
       this.onMessage(`${e.name} is down!`);
       if (this.boss === e) this.boss = null;
-    }
-    if (!this.active.length) {
-      if (!(e && e.isBoss)) this.onMessage('Area clear');
+      this.bossTimer = 70 + Math.random() * 40;
+      this.spawnTimer = Math.min(this.spawnTimer, 8);
+    } else if (!this.active.some(x => !x.isBoss)) {
+      this.onMessage('Area clear');
       this.spawnTimer = 7;
     }
   }
@@ -563,7 +626,22 @@ export class EnemyManager {
   }
 
   _spawnProj(type, from, v, o) {
-    this.projectiles.push({ type, p: from.clone(), v, mesh: this._projMesh(type), life: 4, ...o });
+    this.projectiles.push({ type, p: from.clone(), v, life: 4, ...o, mesh: o.mesh || this._projMesh(type) });
+  }
+
+  // A car thrown (or dropped) by a boss.
+  throwCar(mesh, from, player, drop = false) {
+    let v;
+    if (drop) v = new THREE.Vector3(0, 2, 0);
+    else {
+      const d = from.distanceTo(player.p);
+      const T = Math.max(0.8, Math.min(1.6, d / 22));
+      const tgt = player.p.clone().addScaledVector(player.v, T * 0.5);
+      v = tgt.sub(from).divideScalar(T);
+      v.y += 0.5 * G * T;
+    }
+    this._spawnProj('car', from, v, { gravity: true, dmg: drop ? 14 : 24, knock: 16, aoe: drop ? 3 : 4.6, radius: 1.5, mesh, spin: new THREE.Vector3(Math.random() * 3, Math.random() * 2, Math.random() * 3) });
+    if (!drop) this.audio.swish();
   }
 
   // Ballistic throw that leads a moving target.
@@ -614,24 +692,26 @@ export class EnemyManager {
       pr.p.addScaledVector(pr.v, dt);
       pr.mesh.position.copy(pr.p);
       if (pr.type === 'feather') pr.mesh.lookAt(pr.p.clone().add(dir));
+      else if (pr.spin) { pr.mesh.rotation.x += pr.spin.x * dt; pr.mesh.rotation.y += pr.spin.y * dt; pr.mesh.rotation.z += pr.spin.z * dt; }
       else pr.mesh.rotation.x += dt * 8;
       const pd = pr.p.distanceTo(player.p);
       const hitPlayer = pd < pr.radius + 0.55;
       if (hitPlayer || wallHit || pr.p.y < 0.2 || pr.life <= 0) {
         if (wallHit) pr.p.set(wallHit.point.x, wallHit.point.y, wallHit.point.z);
         if (pr.aoe) {
-          this.burst(pr.type === 'bomb' ? 'bomb' : 'sand', pr.p, pr.aoe);
+          this.burst(pr.type === 'bomb' ? 'bomb' : pr.type === 'car' ? 'dust' : 'sand', pr.p, pr.aoe);
           const d = pr.p.distanceTo(player.p);
           if (d < pr.aoe) {
             const away = player.p.clone().sub(pr.p).setY(0).normalize();
             player.hurt(Math.round(pr.dmg * (1 - d / pr.aoe * 0.5)), away, pr.knock, 6);
           }
-          if (pr.type === 'bomb') { this.audio.land(1.2); if (d < 25) player.shake = Math.max(player.shake, 0.35); }
+          if (pr.type === 'bomb' || pr.type === 'car') { this.audio.land(1.2); if (d < 25) player.shake = Math.max(player.shake, 0.35); }
         } else if (hitPlayer) {
           player.hurt(pr.dmg, dir, pr.knock, 2);
         }
         pr.dead = true;
         this.scene.remove(pr.mesh);
+        if (pr.type === 'car') pr.mesh.material.dispose();
       }
     }
     this.projectiles = this.projectiles.filter(p => !p.dead);
@@ -652,9 +732,14 @@ export class EnemyManager {
     const player = this.player;
     this.comboT -= dt;
 
-    if (!this.active.length) {
+    // Thug pairs keep coming while no boss is around; bosses arrive on a timer.
+    if (!this.boss && !this.active.some(x => !x.isBoss)) {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) { this.spawnTimer = 1e9; this.spawnWave(); }
+    }
+    if (!this.boss && this.bossFactory) {
+      this.bossTimer -= dt;
+      if (this.bossTimer <= 0) { this.bossTimer = 1e9; this.spawnBoss(); }
     }
 
     // Melee resolution
@@ -666,7 +751,7 @@ export class EnemyManager {
         const d = Math.hypot(e.p.x - player.p.x, e.p.z - player.p.z);
         if (d < 1.5) player.lungeT = 0;
         if (pd.t >= pd.hitAt || (player.lungeT <= 0 && d < 2.3 && pd.t >= 0.08)) {
-          if (d < 2.7 && Math.abs(e.p.y - player.p.y) < 2.2) {
+          if (d < 2.7 && Math.abs(e.p.y - player.p.y) < 2.4) {
             const dir = new THREE.Vector3(e.p.x - player.p.x, 0, e.p.z - player.p.z).normalize();
             const heavy = pd.kind === 'kick';
             if (e.takeHit(heavy ? 2 : 1, dir, heavy)) {
@@ -687,7 +772,7 @@ export class EnemyManager {
       this.shotWeb.to.copy(_c);
       if (!s.hit && s.t > 0.12) {
         s.hit = true;
-        if (!s.e.web() && !this.saidSand && s.e.type === 'sandman') { this.saidSand = true; this.onMessage('Webs slip right through the sand. Use your fists!'); }
+        if (!s.e.web(s.dir) && !this.saidSand && s.e.type === 'sandman') { this.saidSand = true; this.onMessage('Webs slip right through the sand. Use your fists!'); }
       }
       if (s.t > 0.3) { this.shotWeb.release(); this.shot = null; }
     }
