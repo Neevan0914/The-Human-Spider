@@ -6,13 +6,20 @@ You start on the 86th-floor observation deck of the **Empire State Building**. T
 
 ## Run it
 
-It is a static site with no build step. Serve the folder and open it:
+**Easiest:** download [`dist/the-human-spider.html`](dist/the-human-spider.html) and double-click it. It's one self-contained file with the game and three.js bundled in, so it runs offline straight from your hard drive.
+
+**From source:** serve the folder and open it (opening `index.html` directly from disk won't work, because browsers block module scripts on `file://`):
 
 ```bash
 npx serve .            # or: python3 -m http.server 8000
 ```
 
-Then open the printed URL (for example http://localhost:8000). Three.js loads from jsDelivr through an import map, so the first load needs an internet connection. The page also works as-is on GitHub Pages.
+**Rebuild the single file** after changing the code:
+
+```bash
+npm install
+npm run build          # writes dist/the-human-spider.html
+```
 
 ## Controls
 
