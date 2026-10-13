@@ -27,7 +27,7 @@ npm run build          # writes dist/the-human-spider.html
 | --- | --- |
 | Mouse | Look (click the view to capture the mouse) |
 | W A S D | Run, steer, pump the swing, crawl on walls |
-| Left mouse or Shift (hold) | Shoot a web and swing; release to let go |
+| Left mouse or Shift (hold) | Swing from wherever the crosshair points (aim at open sky for an automatic anchor); release to let go |
 | Space | Jump (hold on the ground to charge a super jump). Mid-swing: jump off the web with a flip |
 | Right mouse or E | Web-zip to the point under the crosshair. Zipping to a ledge launches you over it |
 | F | Punch, punch, kick combo; lunges at a thug within a few meters |
@@ -78,7 +78,7 @@ A boss turns up on its own every minute or two, at a random landmark, and thug w
 
 - **Fixed 120 Hz integration** of a point mass, with gravity and quadratic air drag (`F = −k·|v|·v`). Terminal velocity is about 55 m/s in a normal fall and about 85 m/s in a dive.
 - **The web is an inextensible rope.** After each step, if the body is farther from the anchor than the rope length, its position is projected back onto that sphere and the outward radial velocity is removed. That is the exact pendulum constraint, so the swing period, energy exchange and centripetal tension all come from the math rather than from canned animation. The rope goes slack if you rise above the anchor, and it snaps if a building gets between you and the anchor point.
-- **Anchor selection** tries three things in order. First it casts a fan of rays above and ahead of your motion and scores the building surfaces it hits by distance, height and how well they line up with your travel, which gives the smoothest swings. If that finds nothing, it uses whatever building is under the crosshair. Failing that, it takes any building in any direction within a few hundred meters, even one below you. That web catches you as you fall past it, so you can attach to any building from anywhere.
+- **Anchor selection** goes where you aim: the web attaches to whatever building is under the crosshair, with a little aim assist if you're just off an edge. Aim at open sky and it picks an anchor above and ahead of your motion automatically; failing that, it takes any building in reach, even one below you.
 - **Pumping.** Holding a direction while the web is taut adds a small tangential force, like driving a playground swing with your legs.
 - **Collision.** The body is two spheres tested against convex prisms, one per building tier, spire section and rooftop box, in a spatial hash. Curbs and low ledges are stepped over. Hitting a wall while airborne starts a wall crawl, and climbing over the top edge vaults you onto the roof.
 

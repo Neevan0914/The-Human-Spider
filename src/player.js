@@ -177,8 +177,8 @@ export class Player {
 
   // ---------------------------------------------------------------- swinging
   // Anchor search, in three passes so a web can reach any building:
-  //  1. an automatic fan above and ahead (the smoothest swings),
-  //  2. wherever the crosshair points,
+  //  1. wherever the crosshair points,
+  //  2. if that's open sky, an automatic fan above and ahead,
   //  3. any building surface in any direction, even below you.
   findAnchor(fwdH, cam) {
     const hv = _b.set(this.v.x, 0, this.v.z);
@@ -212,17 +212,27 @@ export class Player {
       return best;
     };
 
-    // 1. Automatic: above and ahead, in line with travel.
+    // 1. Wherever the crosshair points. If it's just off a building edge,
+    //    a few rays in a tight cone around it still find the spot you meant.
+    if (cam) {
+      const co = cam.camera.position, f = cam.forward;
+      const minT = co.distanceTo(this.p) + 1;
+      const side = new THREE.Vector3().crossVectors(f, UP);
+      if (side.lengthSq() < 1e-6) side.set(1, 0, 0); else side.normalize();
+      const up = new THREE.Vector3().crossVectors(side, f).normalize();
+      const offsets = [[0, 0], [0, 0.04], [0.04, 0], [-0.04, 0], [0, -0.04], [0, 0.08], [0.07, 0.05], [-0.07, 0.05]];
+      for (const [sx, sy] of offsets) {
+        D.copy(f).addScaledVector(side, sx).addScaledVector(up, sy).normalize();
+        const c = this.col.raycast(co, D, 260);
+        if (c && c.t > minT) return toAnchor(c);
+      }
+    }
+
+    // 2. Aiming at open sky: pick a good anchor above and ahead automatically.
     let hit = fan([58, 48, 68, 40, 78, 30, 86], [0, 22, -22, 40, -40, 60, -60], 200, 3, 8,
       (h, height, ahead, lateral) => -Math.abs(h.t - 52) * 0.5 + ahead * 0.35 + Math.min(height, 60) * 0.25
         - Math.max(0, lateral - 0.35 * height) * 0.45);
     if (hit) return toAnchor(hit);
-
-    // 2. Crosshair.
-    if (cam) {
-      const c = this.col.raycast(cam.camera.position, cam.forward, 260);
-      if (c && c.t > cam.camera.position.distanceTo(this.p) + 1) return toAnchor(c);
-    }
 
     // 3. Anything: all around, upward first, then level and downward.
     const all = [0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180];
